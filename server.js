@@ -61,6 +61,69 @@ app.get("/api/status", requireAdmin, (_req, res) => {
   });
 });
 
+app.get("/api/latest-media", requireAdmin, async (req, res) => {
+  try {
+    const limit = Math.min(Number(req.query.limit ?? 10), 25);
+    const media = await getLatestMedia(limit);
+    res.json({
+      ok: true,
+      media: media.map((item) => ({
+        ...item,
+        matchedFlow: findFlow(item.caption ?? "")?.marker ?? null
+      }))
+    });
+  } catch (error) {
+    res.status(500).json({ ok: false, error: errorMessage(error) });
+  }
+});
+
+app.post("/api/test-media", requireAdmin, async (req, res) => {
+  try {
+    const mediaId = String(req.body?.mediaId ?? "").trim();
+    if (!mediaId) return res.status(400).json({ ok: false, error: "mediaId is required" });
+
+    const caption = await getMediaCaption(mediaId);
+    const flow = findFlow(caption);
+    res.json({
+      ok: true,
+      mediaId,
+      matched: Boolean(flow),
+      marker: flow?.marker ?? null,
+      caption
+    });
+  } catch (error) {
+    res.status(500).json({ ok: false, error: errorMessage(error) });
+  }
+});
+
+app.post("/api/dry-run-comment", requireAdmin, async (req, res) => {
+  try {
+    const mediaId = String(req.body?.mediaId ?? "").trim();
+    const text = String(req.body?.text ?? "").trim();
+    if (!mediaId || !text) {
+      return res.status(400).json({ ok: false, error: "mediaId and text are required" });
+    }
+
+    const choice = parseChoice(text);
+    const flow = await getFlowForMedia(mediaId);
+    const reply = choice && flow ? flow.choices[choice] : null;
+
+    res.json({
+      ok: true,
+      mediaId,
+      text,
+      choice,
+      matched: Boolean(flow),
+      marker: flow?.marker ?? null,
+      wouldSend: Boolean(reply),
+      publicReply: reply?.publicReply ?? null,
+      privateReply: reply?.privateReply ?? null
+    });
+  } catch (error) {
+    res.status(500).json({ ok: false, error: errorMessage(error) });
+  }
+});
+
 app.get("/webhook", (req, res) => {
   const mode = req.query["hub.mode"];
   const token = req.query["hub.verify_token"];
@@ -155,6 +218,10 @@ async function graphRequest(path, options = {}) {
     url.searchParams.set("fields", options.fields);
   }
 
+  for (const [key, value] of Object.entries(options.query ?? {})) {
+    url.searchParams.set(key, value);
+  }
+
   const response = await fetch(url, {
     method: options.method ?? "GET",
     headers: options.body ? { "Content-Type": "application/json" } : undefined,
@@ -174,6 +241,15 @@ async function getMediaCaption(mediaId) {
     fields: "id,caption"
   });
   return media.caption ?? "";
+}
+
+async function getLatestMedia(limit) {
+  const response = await graphRequest(`/${IG_USER_ID}/media`, {
+    fields: "id,caption,media_type,media_product_type,permalink,timestamp",
+    query: { limit: String(limit) }
+  });
+
+  return response.data ?? [];
 }
 
 async function replyToComment(commentId, message) {
@@ -211,6 +287,10 @@ function addEvent(event) {
   if (recentEvents.length > 100) {
     recentEvents.length = 100;
   }
+}
+
+function errorMessage(error) {
+  return error instanceof Error ? error.message : String(error);
 }
 
 app.listen(Number(PORT), () => {

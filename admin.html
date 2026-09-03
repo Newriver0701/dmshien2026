@@ -7,11 +7,13 @@
     <style>
       :root {
         color-scheme: light;
-        font-family:
-          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
-          sans-serif;
-        background: #f6f7f9;
-        color: #1b1f24;
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: #f5f6f8;
+        color: #171a1f;
+      }
+
+      * {
+        box-sizing: border-box;
       }
 
       body {
@@ -19,59 +21,187 @@
       }
 
       main {
-        width: min(1120px, calc(100% - 32px));
-        margin: 32px auto;
+        width: min(1180px, calc(100% - 32px));
+        margin: 28px auto 48px;
       }
 
       header {
-        display: flex;
-        align-items: flex-end;
-        justify-content: space-between;
-        gap: 16px;
-        margin-bottom: 24px;
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 18px;
+        align-items: end;
+        margin-bottom: 20px;
+      }
+
+      h1,
+      h2,
+      h3,
+      p {
+        margin: 0;
       }
 
       h1 {
-        margin: 0;
         font-size: 28px;
+        line-height: 1.2;
+      }
+
+      h2 {
+        font-size: 17px;
+      }
+
+      h3 {
+        font-size: 14px;
+      }
+
+      button,
+      input {
+        font: inherit;
       }
 
       button {
-        border: 1px solid #c9d1dc;
+        min-height: 38px;
+        border: 1px solid #c9d1dd;
         background: #ffffff;
+        color: #1f2937;
         border-radius: 6px;
-        padding: 10px 14px;
+        padding: 9px 13px;
         cursor: pointer;
       }
 
-      .grid {
-        display: grid;
-        grid-template-columns: repeat(3, 1fr);
-        gap: 16px;
-        margin-bottom: 16px;
+      button.primary {
+        border-color: #2663eb;
+        background: #2663eb;
+        color: white;
+      }
+
+      button:disabled {
+        cursor: progress;
+        opacity: 0.65;
+      }
+
+      input {
+        width: 100%;
+        min-height: 38px;
+        border: 1px solid #c9d1dd;
+        border-radius: 6px;
+        padding: 9px 11px;
+        background: white;
+        color: #171a1f;
       }
 
       section {
         background: #ffffff;
-        border: 1px solid #d9dee7;
+        border: 1px solid #dce1e8;
         border-radius: 8px;
+      }
+
+      a {
+        color: #2458c5;
+      }
+
+      .topline {
+        color: #667085;
+        margin-top: 5px;
+      }
+
+      .actions {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+      }
+
+      .summary {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 12px;
+        margin-bottom: 14px;
+      }
+
+      .metric {
+        padding: 14px;
+      }
+
+      .metric span {
+        display: block;
+        color: #667085;
+        font-size: 13px;
+        margin-bottom: 8px;
+      }
+
+      .metric strong {
+        font-size: 24px;
+      }
+
+      .layout {
+        display: grid;
+        grid-template-columns: 390px 1fr;
+        gap: 14px;
+      }
+
+      .panel {
         padding: 16px;
       }
 
-      h2 {
-        margin: 0 0 12px;
-        font-size: 16px;
+      .stack {
+        display: grid;
+        gap: 14px;
       }
 
-      .item {
+      .section-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 14px;
+      }
+
+      .field {
+        display: grid;
+        gap: 6px;
+        margin-bottom: 10px;
+      }
+
+      .field label {
+        color: #475467;
+        font-size: 13px;
+      }
+
+      .button-row {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+
+      .result {
+        margin-top: 12px;
+        padding: 12px;
+        background: #f6f8fb;
+        border: 1px solid #e5e9f0;
+        border-radius: 6px;
+        white-space: pre-wrap;
+        word-break: break-word;
+        font-size: 13px;
+        color: #344054;
+        max-height: 260px;
+        overflow: auto;
+      }
+
+      .kv {
+        display: grid;
+        gap: 8px;
+      }
+
+      .kv div {
         display: flex;
         justify-content: space-between;
         gap: 12px;
-        padding: 8px 0;
+        padding-top: 8px;
         border-top: 1px solid #eef1f5;
       }
 
-      .item:first-of-type {
+      .kv div:first-child {
+        padding-top: 0;
         border-top: 0;
       }
 
@@ -89,10 +219,42 @@
         color: #667085;
       }
 
+      .media-list {
+        display: grid;
+        gap: 10px;
+      }
+
+      .media-row {
+        border: 1px solid #e5e9f0;
+        border-radius: 8px;
+        padding: 12px;
+        background: #ffffff;
+      }
+
+      .media-row.active {
+        border-color: #2e7d5b;
+        background: #f3faf7;
+      }
+
+      .media-title {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 7px;
+      }
+
+      .caption {
+        color: #475467;
+        line-height: 1.5;
+        max-height: 64px;
+        overflow: hidden;
+        margin-top: 8px;
+      }
+
       table {
         width: 100%;
         border-collapse: collapse;
-        font-size: 14px;
+        font-size: 13px;
       }
 
       th,
@@ -109,19 +271,20 @@
       }
 
       code {
-        background: #f1f4f8;
+        background: #eef2f7;
         border-radius: 4px;
         padding: 2px 5px;
       }
 
-      @media (max-width: 860px) {
-        header {
-          align-items: flex-start;
-          flex-direction: column;
+      @media (max-width: 920px) {
+        header,
+        .layout,
+        .summary {
+          grid-template-columns: 1fr;
         }
 
-        .grid {
-          grid-template-columns: 1fr;
+        .actions {
+          justify-content: flex-start;
         }
 
         table {
@@ -136,83 +299,207 @@
       <header>
         <div>
           <h1>Instagram Tarot Auto</h1>
-          <div class="muted" id="updated">Loading...</div>
+          <p class="topline" id="updated">Loading...</p>
         </div>
-        <button id="refresh">Refresh</button>
+        <div class="actions">
+          <button id="copy-webhook">Copy Webhook URL</button>
+          <button id="refresh">Refresh</button>
+        </div>
       </header>
 
-      <div class="grid">
-        <section>
-          <h2>Environment</h2>
-          <div id="env"></div>
-        </section>
-
-        <section>
-          <h2>Stats</h2>
-          <div id="stats"></div>
-        </section>
-
-        <section>
-          <h2>Flows</h2>
-          <div id="flows"></div>
-        </section>
+      <div class="summary">
+        <section class="metric"><span>Processed</span><strong id="m-processed">0</strong></section>
+        <section class="metric"><span>Cached Media</span><strong id="m-cached">0</strong></section>
+        <section class="metric"><span>Events</span><strong id="m-events">0</strong></section>
+        <section class="metric"><span>Flow Markers</span><strong id="m-flows">0</strong></section>
       </div>
 
-      <section>
-        <h2>Recent Events</h2>
-        <table>
-          <thead>
-            <tr>
-              <th>Time</th>
-              <th>Status</th>
-              <th>Media</th>
-              <th>Comment</th>
-              <th>Choice</th>
-              <th>Detail</th>
-            </tr>
-          </thead>
-          <tbody id="events"></tbody>
-        </table>
-      </section>
+      <div class="layout">
+        <div class="stack">
+          <section class="panel">
+            <div class="section-head">
+              <h2>Setup</h2>
+            </div>
+            <div class="kv" id="env"></div>
+          </section>
+
+          <section class="panel">
+            <div class="section-head">
+              <h2>Test Tools</h2>
+            </div>
+
+            <div class="field">
+              <label for="media-id">Media ID</label>
+              <input id="media-id" placeholder="17900000000000000" />
+            </div>
+
+            <div class="field">
+              <label for="comment-text">Comment Text</label>
+              <input id="comment-text" value="1番" />
+            </div>
+
+            <div class="button-row">
+              <button class="primary" id="load-media">Get Latest Posts</button>
+              <button id="test-media">Check Marker</button>
+              <button id="dry-run">Dry Run Comment</button>
+            </div>
+
+            <div class="result" id="test-result">No test yet</div>
+          </section>
+        </div>
+
+        <div class="stack">
+          <section class="panel">
+            <div class="section-head">
+              <h2>Latest Posts</h2>
+              <span class="muted" id="media-count">Not loaded</span>
+            </div>
+            <div class="media-list" id="media-list"></div>
+          </section>
+
+          <section class="panel">
+            <div class="section-head">
+              <h2>Recent Events</h2>
+              <span class="muted">Auto refreshes</span>
+            </div>
+            <table>
+              <thead>
+                <tr>
+                  <th>Time</th>
+                  <th>Status</th>
+                  <th>Media</th>
+                  <th>Comment</th>
+                  <th>Choice</th>
+                  <th>Detail</th>
+                </tr>
+              </thead>
+              <tbody id="events"></tbody>
+            </table>
+          </section>
+        </div>
+      </div>
     </main>
 
     <script>
       const params = new URLSearchParams(location.search);
       const token = params.get("token");
 
-      document.getElementById("refresh").addEventListener("click", load);
-      load();
-      setInterval(load, 10000);
+      const api = (path) =>
+        token ? `${path}${path.includes("?") ? "&" : "?"}token=${encodeURIComponent(token)}` : path;
 
-      async function load() {
-        const url = token ? `/api/status?token=${encodeURIComponent(token)}` : "/api/status";
-        const response = await fetch(url);
-        if (!response.ok) {
-          document.body.innerHTML = "<main><h1>Unauthorized</h1><p>ADMIN_TOKENを設定している場合は、<code>/admin?token=...</code>で開いてください。</p></main>";
-          return;
-        }
+      document.getElementById("refresh").addEventListener("click", loadStatus);
+      document.getElementById("load-media").addEventListener("click", loadLatestMedia);
+      document.getElementById("test-media").addEventListener("click", testMedia);
+      document.getElementById("dry-run").addEventListener("click", dryRunComment);
+      document.getElementById("copy-webhook").addEventListener("click", copyWebhookUrl);
 
-        const data = await response.json();
-        render(data);
-      }
+      loadStatus().catch(showError);
+      setInterval(() => loadStatus().catch(showError), 10000);
 
-      function render(data) {
+      async function loadStatus() {
+        const data = await request("/api/status");
         document.getElementById("updated").textContent = `Updated ${new Date().toLocaleString()}`;
+        document.getElementById("m-processed").textContent = data.stats.processedComments;
+        document.getElementById("m-cached").textContent = data.stats.cachedMedia;
+        document.getElementById("m-events").textContent = data.stats.recentEvents;
+        document.getElementById("m-flows").textContent = data.flows.length;
 
         document.getElementById("env").innerHTML = Object.entries(data.env)
           .map(([key, value]) => row(key, typeof value === "boolean" ? status(value) : value))
           .join("");
 
-        document.getElementById("stats").innerHTML = Object.entries(data.stats)
-          .map(([key, value]) => row(key, value))
-          .join("");
+        renderEvents(data.recentEvents);
+      }
 
-        document.getElementById("flows").innerHTML = data.flows
-          .map((flow) => row(flow.marker, flow.choices.join(", ")))
-          .join("");
+      async function loadLatestMedia() {
+        setBusy("load-media", true);
+        try {
+          const data = await request("/api/latest-media?limit=10");
+          document.getElementById("media-count").textContent = `${data.media.length} posts`;
+          document.getElementById("media-list").innerHTML =
+            data.media.map(mediaRow).join("") || `<div class="muted">No posts returned</div>`;
 
+          document.querySelectorAll("[data-media-id]").forEach((button) => {
+            button.addEventListener("click", () => {
+              document.getElementById("media-id").value = button.dataset.mediaId;
+              showResult({ ok: true, selectedMediaId: button.dataset.mediaId });
+            });
+          });
+        } catch (error) {
+          showError(error);
+        } finally {
+          setBusy("load-media", false);
+        }
+      }
+
+      async function testMedia() {
+        setBusy("test-media", true);
+        try {
+          const mediaId = document.getElementById("media-id").value;
+          showResult(await post("/api/test-media", { mediaId }));
+        } catch (error) {
+          showError(error);
+        } finally {
+          setBusy("test-media", false);
+        }
+      }
+
+      async function dryRunComment() {
+        setBusy("dry-run", true);
+        try {
+          const mediaId = document.getElementById("media-id").value;
+          const text = document.getElementById("comment-text").value;
+          showResult(await post("/api/dry-run-comment", { mediaId, text }));
+        } catch (error) {
+          showError(error);
+        } finally {
+          setBusy("dry-run", false);
+        }
+      }
+
+      async function request(path) {
+        const response = await fetch(api(path));
+        if (!response.ok) throw new Error(await response.text());
+        return response.json();
+      }
+
+      async function post(path, body) {
+        const response = await fetch(api(path), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body)
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || response.statusText);
+        return data;
+      }
+
+      function mediaRow(item) {
+        const caption = item.caption || "";
+        const active = item.matchedFlow ? " active" : "";
+        return `
+          <div class="media-row${active}">
+            <div class="media-title">
+              <div>
+                <strong>${escapeHtml(item.media_product_type || item.media_type || "MEDIA")}</strong>
+                <span class="muted">${escapeHtml(item.timestamp || "")}</span>
+              </div>
+              <button data-media-id="${escapeHtml(item.id)}">Use</button>
+            </div>
+            <div><code>${escapeHtml(item.id)}</code> ${
+              item.matchedFlow
+                ? `<span class="ok">${escapeHtml(item.matchedFlow)}</span>`
+                : `<span class="muted">no marker</span>`
+            }</div>
+            <p class="caption">${escapeHtml(caption)}</p>
+            ${item.permalink ? `<a href="${escapeHtml(item.permalink)}" target="_blank" rel="noreferrer">Open on Instagram</a>` : ""}
+          </div>
+        `;
+      }
+
+      function renderEvents(events) {
         document.getElementById("events").innerHTML =
-          data.recentEvents
+          events
             .map(
               (event) => `
                 <tr>
@@ -228,12 +515,30 @@
             .join("") || `<tr><td colspan="6" class="muted">No events yet</td></tr>`;
       }
 
+      function copyWebhookUrl() {
+        const url = `${location.origin}/webhook`;
+        navigator.clipboard.writeText(url);
+        showResult({ ok: true, webhookUrl: url });
+      }
+
+      function showResult(data) {
+        document.getElementById("test-result").textContent = JSON.stringify(data, null, 2);
+      }
+
+      function showError(error) {
+        showResult({ ok: false, error: error instanceof Error ? error.message : String(error) });
+      }
+
       function row(label, value) {
-        return `<div class="item"><span>${escapeHtml(label)}</span><span>${value}</span></div>`;
+        return `<div><span>${escapeHtml(label)}</span><span>${value}</span></div>`;
       }
 
       function status(value) {
         return value ? '<span class="ok">set</span>' : '<span class="bad">missing</span>';
+      }
+
+      function setBusy(id, busy) {
+        document.getElementById(id).disabled = busy;
       }
 
       function escapeHtml(value) {
