@@ -32,6 +32,45 @@ app.get("/health", (_req, res) => {
   res.json({ ok: true, service: "instagram-tarot-auto-simple" });
 });
 
+app.get("/privacy", (_req, res) => {
+  res.type("html").send(`<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Privacy Policy</title>
+    <style>
+      body {
+        max-width: 760px;
+        margin: 40px auto;
+        padding: 0 20px;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        line-height: 1.8;
+        color: #1f2937;
+      }
+      h1 {
+        line-height: 1.3;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>プライバシーポリシー</h1>
+    <p>このアプリは、Instagramのコメントに対する自動返信機能をテスト・運用するためのアプリです。</p>
+    <h2>取得する情報</h2>
+    <p>このアプリは、Instagramコメントの処理に必要な範囲で、コメントID、投稿またはメディアID、コメント本文、Instagramユーザー名などを取得する場合があります。</p>
+    <h2>利用目的</h2>
+    <p>取得した情報は、対象投稿へのコメント判定、自動返信、DMでの返信、動作確認、エラー調査のために利用します。</p>
+    <h2>第三者提供</h2>
+    <p>取得した情報を第三者に販売することはありません。法令に基づく場合を除き、本人の同意なく第三者に提供しません。</p>
+    <h2>保存期間</h2>
+    <p>取得した情報は、動作確認および不具合調査に必要な期間のみ保存し、不要になった場合は削除します。</p>
+    <h2>お問い合わせ</h2>
+    <p>情報の削除やお問い合わせについては、このアプリの管理者までご連絡ください。</p>
+    <p>最終更新日: 2026年9月4日</p>
+  </body>
+</html>`);
+});
+
 app.get("/admin", requireAdmin, async (_req, res) => {
   const html = await readFile(join(__dirname, "admin.html"), "utf8");
   res.type("html").send(html);

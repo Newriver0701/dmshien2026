@@ -60,6 +60,14 @@ https://YOUR-RAILWAY-DOMAIN.up.railway.app/admin?token=ADMIN_TOKENの値
 
 `ADMIN_TOKEN` を入れていない場合は `/admin` だけで開けますが、外から見えるURLなので設定するのがおすすめです。
 
+## プライバシーポリシー
+
+MetaアプリのPrivacy Policy URLには以下を入れます。
+
+```text
+https://YOUR-RAILWAY-DOMAIN.up.railway.app/privacy
+```
+
 ## 鑑定文の編集
 
 `flows.js` のこのあたりを書き換えます。
