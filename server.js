@@ -1,23 +1,64 @@
 import "dotenv/config";
 import express from "express";
-import { findFlow, parseChoice } from "./flows.js";
+import { readFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { findFlow, flows, parseChoice } from "./flows.js";
 
 const app = express();
 app.use(express.json());
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const {
   PORT = 3000,
   VERIFY_TOKEN,
   IG_USER_ID,
   ACCESS_TOKEN,
+  ADMIN_TOKEN,
   GRAPH_BASE_URL = "https://graph.facebook.com",
   GRAPH_API_VERSION = "v25.0"
 } = process.env;
 
 const processedComments = new Set();
+const recentEvents = [];
+const mediaFlowCache = new Map();
 
 app.get("/", (_req, res) => {
+  res.redirect("/admin");
+});
+
+app.get("/health", (_req, res) => {
   res.json({ ok: true, service: "instagram-tarot-auto-simple" });
+});
+
+app.get("/admin", requireAdmin, async (_req, res) => {
+  const html = await readFile(join(__dirname, "admin.html"), "utf8");
+  res.type("html").send(html);
+});
+
+app.get("/api/status", requireAdmin, (_req, res) => {
+  res.json({
+    ok: true,
+    env: {
+      VERIFY_TOKEN: Boolean(VERIFY_TOKEN),
+      IG_USER_ID: Boolean(IG_USER_ID),
+      ACCESS_TOKEN: Boolean(ACCESS_TOKEN),
+      ADMIN_TOKEN: Boolean(ADMIN_TOKEN),
+      GRAPH_BASE_URL,
+      GRAPH_API_VERSION
+    },
+    flows: flows.map((flow) => ({
+      marker: flow.marker,
+      choices: Object.keys(flow.choices)
+    })),
+    stats: {
+      processedComments: processedComments.size,
+      cachedMedia: mediaFlowCache.size,
+      recentEvents: recentEvents.length
+    },
+    recentEvents
+  });
 });
 
 app.get("/webhook", (req, res) => {
@@ -49,20 +90,61 @@ async function handleComment(comment) {
   const commentId = comment?.id;
   const mediaId = comment?.media?.id;
   const choice = parseChoice(comment?.text);
+  const username = comment?.from?.username ?? "";
 
-  if (!commentId || !mediaId || !choice) return;
-  if (processedComments.has(commentId)) return;
+  addEvent({
+    status: "received",
+    commentId,
+    mediaId,
+    username,
+    text: comment?.text ?? "",
+    choice
+  });
 
-  const caption = await getMediaCaption(mediaId);
-  const flow = findFlow(caption);
-  if (!flow) return;
+  if (!commentId || !mediaId || !choice) {
+    addEvent({ status: "ignored", reason: "missing_id_or_choice", commentId, mediaId, choice });
+    return;
+  }
+  if (processedComments.has(commentId)) {
+    addEvent({ status: "ignored", reason: "already_processed", commentId, mediaId, choice });
+    return;
+  }
+
+  const flow = await getFlowForMedia(mediaId);
+  if (!flow) {
+    addEvent({ status: "ignored", reason: "no_caption_marker", commentId, mediaId, choice });
+    return;
+  }
 
   const reply = flow.choices[choice];
-  await replyToComment(commentId, reply.publicReply);
-  await sendPrivateReply(commentId, reply.privateReply);
+  try {
+    await replyToComment(commentId, reply.publicReply);
+    await sendPrivateReply(commentId, reply.privateReply);
+  } catch (error) {
+    addEvent({
+      status: "error",
+      commentId,
+      mediaId,
+      choice,
+      message: error instanceof Error ? error.message : String(error)
+    });
+    throw error;
+  }
 
   processedComments.add(commentId);
+  addEvent({ status: "sent", commentId, mediaId, choice, marker: flow.marker });
   console.log(`sent reply: media=${mediaId} comment=${commentId} choice=${choice}`);
+}
+
+async function getFlowForMedia(mediaId) {
+  if (mediaFlowCache.has(mediaId)) {
+    return mediaFlowCache.get(mediaId);
+  }
+
+  const caption = await getMediaCaption(mediaId);
+  const flow = findFlow(caption) ?? null;
+  mediaFlowCache.set(mediaId, flow);
+  return flow;
 }
 
 async function graphRequest(path, options = {}) {
@@ -109,6 +191,26 @@ async function sendPrivateReply(commentId, message) {
       message: { text: message }
     }
   });
+}
+
+function requireAdmin(req, res, next) {
+  if (!ADMIN_TOKEN) return next();
+
+  const token = req.query.token || req.header("x-admin-token");
+  if (token === ADMIN_TOKEN) return next();
+
+  return res.status(401).send("Unauthorized");
+}
+
+function addEvent(event) {
+  recentEvents.unshift({
+    at: new Date().toISOString(),
+    ...event
+  });
+
+  if (recentEvents.length > 100) {
+    recentEvents.length = 100;
+  }
 }
 
 app.listen(Number(PORT), () => {

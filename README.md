@@ -6,6 +6,7 @@ GitHubとRailwayに上げやすい最小版です。
 
 - `server.js`: Webhook受信とMeta APIへの返信
 - `flows.js`: キャプション目印、公開返信、DM鑑定文
+- `admin.html`: Railway上で見る簡易ダッシュボード
 - `package.json`: Railwayが依存関係を入れて起動するための設定
 - `railway.json`: Railwayの起動設定
 - `.env.example`: 環境変数の見本
@@ -20,6 +21,7 @@ GitHubとRailwayに上げやすい最小版です。
 VERIFY_TOKEN=自分で決めた文字列
 IG_USER_ID=InstagramプロアカウントID
 ACCESS_TOKEN=Metaのアクセストークン
+ADMIN_TOKEN=管理画面用の好きな長い文字列
 GRAPH_BASE_URL=https://graph.facebook.com
 GRAPH_API_VERSION=v25.0
 ```
@@ -37,6 +39,23 @@ https://YOUR-RAILWAY-DOMAIN.up.railway.app/webhook
 ```
 
 6. そのリールに `1` / `2` / `3` / `1番` / `２番` などでコメントすると返信します。
+
+## 管理画面
+
+Railwayにデプロイしたら、以下で見られます。
+
+```text
+https://YOUR-RAILWAY-DOMAIN.up.railway.app/admin?token=ADMIN_TOKENの値
+```
+
+見られるもの:
+
+- 環境変数が入っているか
+- 登録されているキャプション目印
+- 処理済みコメント数
+- 受信したコメント、無視した理由、送信結果、エラー
+
+`ADMIN_TOKEN` を入れていない場合は `/admin` だけで開けますが、外から見えるURLなので設定するのがおすすめです。
 
 ## 鑑定文の編集
 
