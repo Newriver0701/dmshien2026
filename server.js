@@ -43,8 +43,10 @@ const {
   APP_ID,
   APP_SECRET,
   IG_USERNAME,
-  GRAPH_BASE_URL = "https://graph.facebook.com",
-  GRAPH_API_VERSION = "v25.0"
+  API_MODE = "instagram",
+  GRAPH_BASE_URL = "https://graph.instagram.com",
+  GRAPH_API_VERSION = "v26.0",
+  FACEBOOK_GRAPH_BASE_URL = "https://graph.facebook.com"
 } = process.env;
 
 const processedComments = new Set();
@@ -122,8 +124,10 @@ app.get("/api/status", requireAdmin, async (_req, res) => {
       APP_ID: Boolean(APP_ID),
       APP_SECRET: Boolean(APP_SECRET),
       IG_USERNAME: Boolean(IG_USERNAME),
+      API_MODE,
       GRAPH_BASE_URL,
-      GRAPH_API_VERSION
+      GRAPH_API_VERSION,
+      FACEBOOK_GRAPH_BASE_URL
     },
     database: {
       ...getDatabaseStatus()
@@ -203,7 +207,7 @@ app.post("/api/exchange-token", requireAdmin, async (req, res) => {
       });
     }
 
-    const url = new URL(`${GRAPH_BASE_URL}/${GRAPH_API_VERSION}/oauth/access_token`);
+    const url = new URL(`${FACEBOOK_GRAPH_BASE_URL}/${GRAPH_API_VERSION}/oauth/access_token`);
     url.searchParams.set("grant_type", "fb_exchange_token");
     url.searchParams.set("client_id", APP_ID);
     url.searchParams.set("client_secret", APP_SECRET);
@@ -228,7 +232,7 @@ app.post("/api/page-tokens", requireAdmin, async (req, res) => {
       return res.status(400).json({ ok: false, error: "longUserToken is required" });
     }
 
-    const url = new URL(`${GRAPH_BASE_URL}/${GRAPH_API_VERSION}/me/accounts`);
+    const url = new URL(`${FACEBOOK_GRAPH_BASE_URL}/${GRAPH_API_VERSION}/me/accounts`);
     url.searchParams.set("fields", "name,id,access_token,instagram_business_account");
     url.searchParams.set("access_token", longUserToken);
 
@@ -441,9 +445,25 @@ app.post("/webhook", (req, res) => {
 
   const entries = req.body?.entry ?? [];
   for (const entry of entries) {
+    if (entry.field === "comments" && entry.value) {
+      handleComment(entry.value).catch(console.error);
+    } else if (entry.field && entry.value) {
+      addEvent({
+        status: "ignored",
+        reason: "unsupported_webhook_field",
+        message: `未対応Webhook field: ${entry.field}`
+      });
+    }
+
     for (const change of entry.changes ?? []) {
       if (change.field === "comments") {
         handleComment(change.value).catch(console.error);
+      } else {
+        addEvent({
+          status: "ignored",
+          reason: "unsupported_webhook_field",
+          message: `未対応Webhook field: ${change.field ?? "unknown"}`
+        });
       }
     }
   }

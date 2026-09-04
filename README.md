@@ -1,6 +1,6 @@
 # Instagram Tarot Auto Simple
 
-GitHubとRailwayに上げやすい最小版です。
+Instagramログイン方式で動かす、GitHubとRailwayに上げやすい最小版です。
 
 ## ファイル
 
@@ -20,32 +20,37 @@ GitHubとRailwayに上げやすい最小版です。
 
 ```text
 VERIFY_TOKEN=自分で決めた文字列
-IG_USER_ID=InstagramプロアカウントID
+IG_USER_ID=API setup with Instagram Loginで表示されるAccount ID
 IG_USERNAME=自分のInstagramユーザー名
-ACCESS_TOKEN=Metaのアクセストークン
+ACCESS_TOKEN=API setup with Instagram Loginで生成したAccess Token
 ADMIN_TOKEN=管理画面用の好きな長い文字列
 DATABASE_URL=Railway Postgresを追加すると自動で入ります
-APP_ID=MetaアプリID
-APP_SECRET=Metaアプリシークレット
-GRAPH_BASE_URL=https://graph.facebook.com
-GRAPH_API_VERSION=v25.0
+API_MODE=instagram
+GRAPH_BASE_URL=https://graph.instagram.com
+GRAPH_API_VERSION=v26.0
+FACEBOOK_GRAPH_BASE_URL=https://graph.facebook.com
 ```
 
-4. Meta DeveloperのWebhook URLに設定
+`APP_ID` と `APP_SECRET` は、Facebookログイン方式の補助Token取得を使う時だけ入れます。
+
+4. Meta Developerの `Use Cases -> Customize -> API setup with Instagram Login` でWebhook URLに設定
 
 ```text
 https://YOUR-RAILWAY-DOMAIN.up.railway.app/webhook
 ```
 
-5. 対象リールのキャプション末尾に入れる
+5. Verify TokenにはRailwayの `VERIFY_TOKEN` と同じ文字列を入れる
+6. Webhook fieldは `comments` を購読する
+7. アプリを公開する
+8. 対象リールのキャプション末尾に入れる
 
 ```text
 [auto:tarot-001]
 ```
 
-6. 管理画面で「Instagramから同期」を押す
-7. 対象リールをクリックしてコメント一覧を確認する
-8. そのリールに `1` / `2` / `3` / `1番` / `２番` / `①` / `②` / `③` などでコメントすると返信します。
+9. 管理画面で「Instagramから同期」を押す
+10. 対象リールをクリックしてコメント一覧を確認する
+11. そのリールに `1` / `2` / `3` / `1番` / `２番` / `①` / `②` / `③` などでコメントすると返信します。
 
 ## 管理画面
 
@@ -74,23 +79,34 @@ https://YOUR-RAILWAY-DOMAIN.up.railway.app/admin?token=ADMIN_TOKENの値
 - 今日のDM送信数とエラー数
 - 今日Webhookで受けたコメント数
 - 今日Webhookで受けたコメントの投稿別サマリー
-- 短期User TokenからPage Access Tokenを取得
+- Facebookログイン方式に戻す時の補助Token取得
 - 受信したコメント、無視した理由、送信結果、エラー
 
 `ADMIN_TOKEN` を入れていない場合は `/admin` だけで開けますが、外から見えるURLなので設定するのがおすすめです。
 
-## トークン更新
+## Instagramログイン方式
 
-管理画面の「トークン更新」で以下ができます。
+この版のメイン運用はInstagramログイン方式です。
+Facebook Page Access Tokenとは混ぜないでください。`IG_USER_ID` と `ACCESS_TOKEN` は、同じInstagramログイン画面で取得したAccount IDとAccess Tokenの組み合わせにします。
 
-1. Graph API Explorerで短期User Tokenを作る
-2. 管理画面に貼る
-3. 「長期Tokenに交換」を押す
-4. 「Page Tokenを取得」を押す
-5. 返ってきた `pages[].access_token` をRailwayの `ACCESS_TOKEN` に入れる
-6. 返ってきた `pages[].instagram_business_account.id` をRailwayの `IG_USER_ID` に入れる
+1. Meta App Dashboardで `Use Cases -> Customize`
+2. `API setup with Instagram Login` を開く
+3. 必要権限を追加する
+   - `instagram_business_basic`
+   - `instagram_business_manage_comments`
+   - `instagram_business_manage_messages`
+4. Instagram Testerを追加し、Instagram側で招待を承認する
+5. `Generate access tokens` でAccess Tokenを発行する
+6. 同じ画面のAccount IDを `IG_USER_ID` に入れる
+7. Access Tokenを `ACCESS_TOKEN` に入れる
+8. 同じ画面のWebhook設定で `/webhook` を登録する
 
-この機能を使うには、Railway Variablesに以下も入れてください。
+## Facebookログイン方式の補助
+
+管理画面には、短期Facebook User Tokenを長期化してPage Tokenを取る補助機能も残しています。
+ただしInstagramログイン方式で運用する場合は使いません。
+
+この補助機能を使う場合だけ、Railway Variablesに以下も入れてください。
 
 ```text
 APP_ID=MetaアプリID

@@ -514,7 +514,7 @@
             <a href="#reels">対象リール</a>
             <a href="#detail">投稿詳細</a>
             <a href="#test">送信せずテスト</a>
-            <a href="#tokens">トークン更新</a>
+            <a href="#tokens">Instagramログイン設定</a>
             <a href="#events">履歴</a>
           </nav>
           <p class="note">
@@ -618,20 +618,20 @@
 
               <section class="panel" id="tokens">
                 <div class="head">
-                  <h2>トークン更新</h2>
+                  <h2>Instagramログイン設定</h2>
                 </div>
-                <p class="hint">短期User Tokenを長期化し、Page Access TokenとInstagram IDを取得します。</p>
+                <p class="hint">Instagram Login方式では、Metaの「API setup with Instagram Login」で生成したAccess TokenとAccount IDをRailwayに入れます。この欄はFacebookログイン方式に戻す時の補助です。</p>
                 <div class="field">
-                  <label for="short-token">短期User Token</label>
-                  <input id="short-token" placeholder="Graph API Explorerで作ったUser Token" />
+                  <label for="short-token">Facebook方式の短期User Token</label>
+                  <input id="short-token" placeholder="Facebook Login方式に戻す時だけ使います" />
                 </div>
                 <div class="field">
-                  <label for="long-token">長期User Token</label>
-                  <input id="long-token" placeholder="交換後にここへ入ります" />
+                  <label for="long-token">Facebook方式の長期User Token</label>
+                  <input id="long-token" placeholder="Facebook方式の交換後にここへ入ります" />
                 </div>
                 <div class="row-actions">
-                  <button id="exchange-token" class="primary">長期Tokenに交換</button>
-                  <button id="load-page-tokens">Page Tokenを取得</button>
+                  <button id="exchange-token">Facebook長期Tokenに交換</button>
+                  <button id="load-page-tokens">Facebook Page Tokenを取得</button>
                 </div>
                 <div class="result" id="token-result">まだ実行していません。</div>
               </section>
@@ -1226,8 +1226,10 @@
           DATABASE_URL: "Postgres接続",
           APP_ID: "MetaアプリID",
           APP_SECRET: "Metaアプリシークレット",
+          API_MODE: "API方式",
           GRAPH_BASE_URL: "API接続先",
-          GRAPH_API_VERSION: "APIバージョン"
+          GRAPH_API_VERSION: "APIバージョン",
+          FACEBOOK_GRAPH_BASE_URL: "Facebook補助API接続先"
         }[key] || key;
       }
 
