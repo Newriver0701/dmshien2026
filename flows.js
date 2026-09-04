@@ -1,6 +1,9 @@
 export const flows = [
   {
+    id: "tarot-001",
+    name: "3択タロットDM",
     marker: "[auto:tarot-001]",
+    enabled: true,
     choices: {
       "1": {
         publicReply: "1ですね。鑑定結果をDMに送りました。",

@@ -5,8 +5,9 @@ GitHubとRailwayに上げやすい最小版です。
 ## ファイル
 
 - `server.js`: Webhook受信とMeta APIへの返信
-- `flows.js`: キャプション目印、公開返信、DM鑑定文
-- `admin.html`: Railway上で見る簡易ダッシュボード
+- `flows.js`: 初期フロー、キャプション目印、公開返信、DM鑑定文
+- `db.js`: Postgres保存、テーブル作成、同期処理
+- `admin.html`: Railway上で見る管理画面
 - `package.json`: Railwayが依存関係を入れて起動するための設定
 - `railway.json`: Railwayの起動設定
 - `.env.example`: 環境変数の見本
@@ -20,6 +21,7 @@ GitHubとRailwayに上げやすい最小版です。
 ```text
 VERIFY_TOKEN=自分で決めた文字列
 IG_USER_ID=InstagramプロアカウントID
+IG_USERNAME=自分のInstagramユーザー名
 ACCESS_TOKEN=Metaのアクセストークン
 ADMIN_TOKEN=管理画面用の好きな長い文字列
 DATABASE_URL=Railway Postgresを追加すると自動で入ります
@@ -41,7 +43,9 @@ https://YOUR-RAILWAY-DOMAIN.up.railway.app/webhook
 [auto:tarot-001]
 ```
 
-6. そのリールに `1` / `2` / `3` / `1番` / `２番` などでコメントすると返信します。
+6. 管理画面で「Instagramから同期」を押す
+7. 対象リールをクリックしてコメント一覧を確認する
+8. そのリールに `1` / `2` / `3` / `1番` / `２番` などでコメントすると返信します。
 
 ## 管理画面
 
@@ -58,7 +62,12 @@ https://YOUR-RAILWAY-DOMAIN.up.railway.app/admin?token=ADMIN_TOKENの値
 - 処理済みコメント数
 - 最新投稿の取得
 - 投稿ごとのキャプション目印チェック
+- サムネ付き対象リール一覧
+- 投稿ごとのコメント一覧
+- 自分のコメント除外
 - コメント文の疑似判定
+- 自動化フロー一覧
+- 今日のDM送信数とエラー数
 - 短期User TokenからPage Access Tokenを取得
 - 受信したコメント、無視した理由、送信結果、エラー
 
@@ -100,9 +109,14 @@ Add PostgreSQL
 
 `DATABASE_URL` がある場合は、以下をPostgresに保存します。
 
+- 自動化フロー
 - どの投稿media_idが対象マーカー付きか
+- サムネURL、キャプション、コメント数、いいね数
+- 投稿ごとのコメント一覧
 - 返信済みのcomment_id
 - 受信、無視、送信、エラーの履歴
+
+自分のコメントを除外するため、`IG_USERNAME` も入れてください。`@` はあってもなくても動きます。
 
 `DATABASE_URL` がない場合もアプリは動きますが、Railwayの再起動で履歴と返信済み情報は消えます。
 

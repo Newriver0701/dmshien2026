@@ -3,17 +3,15 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>リールDM自動返信</title>
+    <title>リールDM自動化</title>
     <style>
       :root {
-        color-scheme: light;
         font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
         background: #f4f6f8;
-        color: #17202a;
+        color: #141922;
         --border: #d9e0e8;
-        --soft: #eef3f7;
         --muted: #667085;
-        --ink: #17202a;
+        --soft: #eef3f7;
         --blue: #2563eb;
         --green: #15803d;
         --red: #b42318;
@@ -34,34 +32,32 @@
       }
 
       button {
-        min-height: 40px;
+        min-height: 38px;
         border: 1px solid #c8d1dc;
-        background: #ffffff;
+        background: white;
         color: #1f2937;
         border-radius: 7px;
-        padding: 9px 14px;
+        padding: 8px 12px;
         cursor: pointer;
       }
 
       button.primary {
         border-color: var(--blue);
         background: var(--blue);
-        color: #ffffff;
+        color: white;
       }
 
       button:disabled {
-        cursor: progress;
         opacity: 0.65;
+        cursor: progress;
       }
 
       input {
         width: 100%;
-        min-height: 42px;
+        min-height: 40px;
         border: 1px solid #c8d1dc;
         border-radius: 7px;
-        padding: 9px 12px;
-        background: #ffffff;
-        color: var(--ink);
+        padding: 8px 11px;
       }
 
       a {
@@ -69,47 +65,29 @@
       }
 
       main {
-        width: min(1180px, calc(100% - 32px));
-        margin: 24px auto 48px;
+        width: min(1260px, calc(100% - 28px));
+        margin: 22px auto 44px;
       }
 
-      .app-shell {
+      .shell {
         display: grid;
-        grid-template-columns: 248px 1fr;
-        gap: 16px;
+        grid-template-columns: 240px 1fr;
+        gap: 14px;
       }
 
       aside,
       section,
       .hero {
-        background: #ffffff;
+        background: white;
         border: 1px solid var(--border);
         border-radius: 8px;
       }
 
       aside {
-        padding: 16px;
         align-self: start;
         position: sticky;
-        top: 16px;
-      }
-
-      .brand {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        margin-bottom: 18px;
-      }
-
-      .mark {
-        display: grid;
-        place-items: center;
-        width: 38px;
-        height: 38px;
-        border-radius: 8px;
-        background: #17202a;
-        color: #ffffff;
-        font-weight: 800;
+        top: 14px;
+        padding: 16px;
       }
 
       h1,
@@ -120,7 +98,7 @@
       }
 
       h1 {
-        font-size: 24px;
+        font-size: 25px;
         line-height: 1.25;
       }
 
@@ -130,6 +108,24 @@
 
       h3 {
         font-size: 14px;
+      }
+
+      .brand {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        margin-bottom: 18px;
+      }
+
+      .mark {
+        display: grid;
+        place-items: center;
+        width: 38px;
+        height: 38px;
+        border-radius: 8px;
+        background: #141922;
+        color: white;
+        font-weight: 800;
       }
 
       .nav {
@@ -148,11 +144,15 @@
         background: var(--soft);
       }
 
-      .side-note {
-        margin-top: 18px;
+      .note,
+      .muted {
+        color: var(--muted);
+      }
+
+      .note {
+        margin-top: 16px;
         padding-top: 14px;
         border-top: 1px solid #edf1f5;
-        color: var(--muted);
         font-size: 13px;
         line-height: 1.55;
       }
@@ -163,31 +163,35 @@
       }
 
       .hero {
-        padding: 20px;
         display: grid;
         grid-template-columns: 1fr auto;
-        gap: 18px;
+        gap: 16px;
         align-items: end;
+        padding: 20px;
       }
 
       .lead {
         margin-top: 7px;
         color: #475467;
         line-height: 1.65;
-        max-width: 740px;
+        max-width: 760px;
       }
 
-      .actions {
+      .actions,
+      .row-actions {
         display: flex;
         gap: 8px;
         flex-wrap: wrap;
+      }
+
+      .actions {
         justify-content: flex-end;
       }
 
-      .summary {
+      .metrics {
         display: grid;
-        grid-template-columns: repeat(4, 1fr);
-        gap: 12px;
+        grid-template-columns: repeat(5, 1fr);
+        gap: 10px;
       }
 
       .metric {
@@ -196,23 +200,19 @@
 
       .metric span {
         display: block;
+        margin-bottom: 7px;
         color: var(--muted);
         font-size: 13px;
-        margin-bottom: 8px;
       }
 
       .metric strong {
-        font-size: 24px;
+        font-size: 23px;
       }
 
-      .layout {
+      .grid {
         display: grid;
-        grid-template-columns: 390px 1fr;
+        grid-template-columns: 1fr 1.15fr;
         gap: 14px;
-      }
-
-      .panel {
-        padding: 16px;
       }
 
       .stack {
@@ -220,20 +220,106 @@
         gap: 14px;
       }
 
-      .section-head {
+      .panel {
+        padding: 16px;
+      }
+
+      .head {
         display: flex;
         justify-content: space-between;
         align-items: center;
-        gap: 12px;
-        margin-bottom: 14px;
+        gap: 10px;
+        margin-bottom: 12px;
       }
 
       .hint {
         color: var(--muted);
-        font-size: 13px;
         line-height: 1.55;
-        margin-top: -5px;
-        margin-bottom: 14px;
+        font-size: 13px;
+        margin: -4px 0 12px;
+      }
+
+      .flow-list,
+      .media-list,
+      .comment-list {
+        display: grid;
+        gap: 10px;
+      }
+
+      .flow,
+      .media,
+      .comment {
+        border: 1px solid #e5e9f0;
+        border-radius: 8px;
+        background: #fff;
+        padding: 12px;
+      }
+
+      .media {
+        display: grid;
+        grid-template-columns: 108px 1fr;
+        gap: 12px;
+        cursor: pointer;
+      }
+
+      .media.selected {
+        border-color: var(--blue);
+        box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.08);
+      }
+
+      .thumb {
+        width: 108px;
+        aspect-ratio: 4 / 5;
+        object-fit: cover;
+        border-radius: 7px;
+        background: #edf1f5;
+      }
+
+      .caption {
+        margin-top: 8px;
+        max-height: 58px;
+        overflow: hidden;
+        color: #475467;
+        line-height: 1.45;
+        font-size: 13px;
+      }
+
+      .line {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        align-items: start;
+      }
+
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        min-height: 23px;
+        padding: 2px 8px;
+        border-radius: 999px;
+        background: #eef2f7;
+        color: #344054;
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      .badge.good {
+        background: #e7f6ec;
+        color: var(--green);
+      }
+
+      .badge.bad {
+        background: #feecec;
+        color: var(--red);
+      }
+
+      .comment.owner {
+        opacity: 0.58;
+      }
+
+      .choice {
+        font-size: 20px;
+        font-weight: 800;
       }
 
       .field {
@@ -247,12 +333,6 @@
         font-size: 13px;
       }
 
-      .button-row {
-        display: flex;
-        gap: 8px;
-        flex-wrap: wrap;
-      }
-
       .result {
         margin-top: 12px;
         padding: 12px;
@@ -263,7 +343,7 @@
         word-break: break-word;
         font-size: 13px;
         color: #344054;
-        max-height: 280px;
+        max-height: 250px;
         overflow: auto;
       }
 
@@ -276,13 +356,13 @@
         display: flex;
         justify-content: space-between;
         gap: 12px;
-        padding-top: 8px;
         border-top: 1px solid #eef1f5;
+        padding-top: 8px;
       }
 
       .kv div:first-child {
-        padding-top: 0;
         border-top: 0;
+        padding-top: 0;
       }
 
       .ok {
@@ -290,62 +370,9 @@
         font-weight: 700;
       }
 
-      .bad {
+      .bad-text {
         color: var(--red);
         font-weight: 700;
-      }
-
-      .muted {
-        color: var(--muted);
-      }
-
-      .media-list {
-        display: grid;
-        gap: 10px;
-      }
-
-      .media-row {
-        border: 1px solid #e5e9f0;
-        border-radius: 8px;
-        padding: 12px;
-        background: #ffffff;
-      }
-
-      .media-row.active {
-        border-color: #2e7d5b;
-        background: #f3faf7;
-      }
-
-      .media-title {
-        display: flex;
-        justify-content: space-between;
-        gap: 12px;
-        margin-bottom: 8px;
-      }
-
-      .caption {
-        color: #475467;
-        line-height: 1.55;
-        max-height: 72px;
-        overflow: hidden;
-        margin-top: 8px;
-      }
-
-      .badge {
-        display: inline-flex;
-        align-items: center;
-        min-height: 24px;
-        padding: 3px 8px;
-        border-radius: 999px;
-        background: #eef2f7;
-        color: #344054;
-        font-size: 12px;
-        font-weight: 700;
-      }
-
-      .badge.good {
-        background: #e7f6ec;
-        color: var(--green);
       }
 
       table {
@@ -356,7 +383,7 @@
 
       th,
       td {
-        padding: 10px;
+        padding: 9px;
         border-top: 1px solid #eef1f5;
         text-align: left;
         vertical-align: top;
@@ -373,11 +400,11 @@
         padding: 2px 5px;
       }
 
-      @media (max-width: 960px) {
-        .app-shell,
+      @media (max-width: 980px) {
+        .shell,
         .hero,
-        .layout,
-        .summary {
+        .grid,
+        .metrics {
           grid-template-columns: 1fr;
         }
 
@@ -388,46 +415,40 @@
         .actions {
           justify-content: flex-start;
         }
-
-        table {
-          display: block;
-          overflow-x: auto;
-        }
       }
     </style>
   </head>
   <body>
     <main>
-      <div class="app-shell">
+      <div class="shell">
         <aside>
           <div class="brand">
             <div class="mark">DM</div>
             <div>
-              <h3>リールDM自動返信</h3>
-              <p class="muted">Instagramコメント用</p>
+              <h3>リールDM自動化</h3>
+              <p class="muted">コメント返信管理</p>
             </div>
           </div>
           <nav class="nav">
-            <a href="#overview">全体状況</a>
-            <a href="#setup">設定チェック</a>
+            <a href="#dashboard">ダッシュボード</a>
+            <a href="#flows">自動化フロー</a>
+            <a href="#reels">対象リール</a>
+            <a href="#detail">投稿詳細</a>
+            <a href="#test">送信せずテスト</a>
             <a href="#tokens">トークン更新</a>
-            <a href="#test">動作テスト</a>
-            <a href="#posts">最新投稿</a>
-            <a href="#events">受信履歴</a>
+            <a href="#events">履歴</a>
           </nav>
-          <p class="side-note">
-            対象リールのキャプションに <code>[auto:tarot-001]</code> が入っている時だけ、コメント番号に合わせて返信します。
+          <p class="note">
+            自分のコメントは自動返信しません。コメント詳細では「自分のコメント」として薄く表示されます。
           </p>
         </aside>
 
         <div class="content">
-          <div class="hero" id="overview">
+          <div class="hero" id="dashboard">
             <div>
-              <h1>コメントからDM返信までを確認する画面</h1>
-              <p class="lead">
-                最新投稿を読み込み、対象マーカーが入っているか確認し、実際に送信する前にコメント文の判定をテストできます。
-              </p>
-              <p class="topline muted" id="updated">Loading...</p>
+              <h1>DM自動化の稼働状況</h1>
+              <p class="lead">リールへのコメントを受け取り、番号ごとの公開返信とDM送信を管理します。投稿一覧は対象リールを選ぶための補助です。</p>
+              <p class="muted" id="updated">Loading...</p>
             </div>
             <div class="actions">
               <button id="copy-webhook">Webhook URLをコピー</button>
@@ -435,104 +456,111 @@
             </div>
           </div>
 
-          <div class="summary">
-            <section class="metric"><span>返信済みコメント</span><strong id="m-processed">0</strong></section>
-            <section class="metric"><span>確認済み投稿</span><strong id="m-cached">0</strong></section>
-            <section class="metric"><span>受信履歴</span><strong id="m-events">0</strong></section>
+          <div class="metrics">
+            <section class="metric"><span>稼働中フロー</span><strong id="m-flows">0</strong></section>
+            <section class="metric"><span>対象リール</span><strong id="m-posts">0</strong></section>
+            <section class="metric"><span>今日のDM送信</span><strong id="m-sent">0</strong></section>
+            <section class="metric"><span>今日のエラー</span><strong id="m-errors">0</strong></section>
             <section class="metric"><span>Postgres</span><strong id="m-db">確認中</strong></section>
           </div>
 
-          <div class="layout">
+          <div class="grid">
             <div class="stack">
-              <section class="panel" id="setup">
-                <div class="section-head">
-                  <h2>設定チェック</h2>
+              <section class="panel" id="flows">
+                <div class="head">
+                  <h2>自動化フロー</h2>
+                  <button id="load-flows">再読込</button>
                 </div>
-                <p class="hint">Railwayに必要な値が入っているかを確認します。赤い項目がある時はVariablesを見直してください。</p>
-                <div class="kv" id="env"></div>
+                <p class="hint">どの目印で、どんな公開返信/DMが送られるかを確認します。</p>
+                <div class="flow-list" id="flow-list"></div>
+              </section>
+
+              <section class="panel" id="reels">
+                <div class="head">
+                  <h2>対象リールを探す</h2>
+                  <button class="primary" id="sync-media">Instagramから同期</button>
+                </div>
+                <p class="hint">サムネ付きで投稿を保存します。クリックするとコメント一覧を見られます。</p>
+                <div class="media-list" id="media-list"></div>
+              </section>
+            </div>
+
+            <div class="stack">
+              <section class="panel" id="detail">
+                <div class="head">
+                  <h2>投稿詳細</h2>
+                  <button id="sync-comments">コメントを取得</button>
+                </div>
+                <div id="post-detail" class="muted">投稿を選択してください。</div>
+                <div class="comment-list" id="comment-list"></div>
+              </section>
+
+              <section class="panel" id="test">
+                <div class="head">
+                  <h2>送信せずテスト</h2>
+                </div>
+                <p class="hint">選んだ投稿とコメント文で、どのDMが送られる予定か確認します。</p>
+                <div class="field">
+                  <label for="media-id">投稿ID</label>
+                  <input id="media-id" placeholder="17900000000000000" />
+                </div>
+                <div class="field">
+                  <label for="comment-text">コメント文</label>
+                  <input id="comment-text" value="1番" />
+                </div>
+                <div class="row-actions">
+                  <button id="dry-run" class="primary">送信せずテスト</button>
+                  <button id="check-marker">目印を確認</button>
+                </div>
+                <div class="result" id="test-result">まだテストしていません。</div>
               </section>
 
               <section class="panel" id="tokens">
-                <div class="section-head">
+                <div class="head">
                   <h2>トークン更新</h2>
                 </div>
-                <p class="hint">Graph API Explorerで作った短期User Tokenを貼ると、長期User Tokenに交換して、Page Access TokenとInstagram IDを取得できます。</p>
-
+                <p class="hint">短期User Tokenを長期化し、Page Access TokenとInstagram IDを取得します。</p>
                 <div class="field">
                   <label for="short-token">短期User Token</label>
                   <input id="short-token" placeholder="Graph API Explorerで作ったUser Token" />
                 </div>
-
                 <div class="field">
                   <label for="long-token">長期User Token</label>
                   <input id="long-token" placeholder="交換後にここへ入ります" />
                 </div>
-
-                <div class="button-row">
-                  <button class="primary" id="exchange-token">長期Tokenに交換</button>
+                <div class="row-actions">
+                  <button id="exchange-token" class="primary">長期Tokenに交換</button>
                   <button id="load-page-tokens">Page Tokenを取得</button>
                 </div>
-
                 <div class="result" id="token-result">まだ実行していません。</div>
-              </section>
-
-              <section class="panel" id="test">
-                <div class="section-head">
-                  <h2>動作テスト</h2>
-                </div>
-                <p class="hint">最新投稿から選ぶか、media_idを直接入れて確認できます。「送信せずテスト」は実際の返信を送らずに判定だけ見ます。</p>
-
-                <div class="field">
-                  <label for="media-id">投稿のmedia_id</label>
-                  <input id="media-id" placeholder="17900000000000000" />
-                </div>
-
-                <div class="field">
-                  <label for="comment-text">テストするコメント</label>
-                  <input id="comment-text" value="1番" />
-                </div>
-
-                <div class="button-row">
-                  <button class="primary" id="load-media">最新投稿を取得</button>
-                  <button id="test-media">マーカー確認</button>
-                  <button id="dry-run">送信せずテスト</button>
-                </div>
-
-                <div class="result" id="test-result">まだテストしていません。</div>
-              </section>
-            </div>
-
-            <div class="stack">
-              <section class="panel" id="posts">
-                <div class="section-head">
-                  <h2>最新投稿</h2>
-                  <span class="muted" id="media-count">未取得</span>
-                </div>
-                <p class="hint">緑の「対象」が出ている投稿は、自動返信の対象として判定されています。</p>
-                <div class="media-list" id="media-list"></div>
-              </section>
-
-              <section class="panel" id="events">
-                <div class="section-head">
-                  <h2>受信履歴</h2>
-                  <span class="muted">10秒ごとに更新</span>
-                </div>
-                <table>
-                  <thead>
-                    <tr>
-                      <th>時間</th>
-                      <th>状態</th>
-                      <th>投稿</th>
-                      <th>コメント</th>
-                      <th>番号</th>
-                      <th>詳細</th>
-                    </tr>
-                  </thead>
-                  <tbody id="events-body"></tbody>
-                </table>
               </section>
             </div>
           </div>
+
+          <section class="panel" id="setup">
+            <div class="head"><h2>設定チェック</h2></div>
+            <div class="kv" id="env"></div>
+          </section>
+
+          <section class="panel" id="events">
+            <div class="head">
+              <h2>履歴</h2>
+              <span class="muted">10秒ごとに更新</span>
+            </div>
+            <table>
+              <thead>
+                <tr>
+                  <th>時間</th>
+                  <th>状態</th>
+                  <th>投稿</th>
+                  <th>コメント</th>
+                  <th>番号</th>
+                  <th>詳細</th>
+                </tr>
+              </thead>
+              <tbody id="events-body"></tbody>
+            </table>
+          </section>
         </div>
       </div>
     </main>
@@ -542,79 +570,113 @@
       const token = params.get("token");
       const api = (path) =>
         token ? `${path}${path.includes("?") ? "&" : "?"}token=${encodeURIComponent(token)}` : path;
+      let selectedMediaId = "";
 
-      document.getElementById("refresh").addEventListener("click", loadStatus);
-      document.getElementById("load-media").addEventListener("click", loadLatestMedia);
-      document.getElementById("test-media").addEventListener("click", testMedia);
+      document.getElementById("refresh").addEventListener("click", refreshAll);
+      document.getElementById("load-flows").addEventListener("click", loadFlows);
+      document.getElementById("sync-media").addEventListener("click", syncMedia);
+      document.getElementById("sync-comments").addEventListener("click", syncComments);
       document.getElementById("dry-run").addEventListener("click", dryRunComment);
+      document.getElementById("check-marker").addEventListener("click", checkMarker);
       document.getElementById("copy-webhook").addEventListener("click", copyWebhookUrl);
       document.getElementById("exchange-token").addEventListener("click", exchangeToken);
       document.getElementById("load-page-tokens").addEventListener("click", loadPageTokens);
 
-      loadStatus().catch(showError);
-      setInterval(() => loadStatus().catch(showError), 10000);
+      refreshAll();
+      setInterval(loadStatus, 10000);
+
+      async function refreshAll() {
+        await Promise.all([loadStatus(), loadFlows(), loadMedia()]);
+      }
 
       async function loadStatus() {
         const data = await request("/api/status");
         document.getElementById("updated").textContent = `最終更新: ${new Date().toLocaleString()}`;
-        document.getElementById("m-processed").textContent = data.stats.processedComments;
-        document.getElementById("m-cached").textContent = data.stats.cachedMedia;
-        document.getElementById("m-events").textContent = data.stats.recentEvents;
+        document.getElementById("m-flows").textContent = data.stats.activeFlows ?? 0;
+        document.getElementById("m-posts").textContent = data.stats.activePosts ?? 0;
+        document.getElementById("m-sent").textContent = data.stats.sentToday ?? 0;
+        document.getElementById("m-errors").textContent = data.stats.errorsToday ?? 0;
         document.getElementById("m-db").textContent = data.database.connected
           ? "接続中"
           : data.database.configured
             ? "未接続"
             : "未設定";
 
-        const envRows = Object.entries(data.env)
-          .map(([key, value]) => row(labelForEnv(key), typeof value === "boolean" ? status(value) : escapeHtml(value)));
+        const envRows = Object.entries(data.env).map(([key, value]) =>
+          row(labelForEnv(key), typeof value === "boolean" ? status(value) : escapeHtml(value))
+        );
         if (data.database.disabledReason) {
-          envRows.push(row("Postgresエラー", `<span class="bad">${escapeHtml(data.database.disabledReason)}</span>`));
+          envRows.push(row("Postgresエラー", `<span class="bad-text">${escapeHtml(data.database.disabledReason)}</span>`));
         }
         document.getElementById("env").innerHTML = envRows.join("");
-
-        renderEvents(data.recentEvents);
+        renderEvents(data.recentEvents ?? []);
       }
 
-      async function loadLatestMedia() {
-        setBusy("load-media", true);
-        try {
-          const data = await request("/api/latest-media?limit=10");
-          document.getElementById("media-count").textContent = `${data.media.length}件`;
-          document.getElementById("media-list").innerHTML =
-            data.media.map(mediaRow).join("") || `<div class="muted">投稿が取得できませんでした。</div>`;
+      async function loadFlows() {
+        const data = await request("/api/flows");
+        document.getElementById("flow-list").innerHTML =
+          data.flows.map(flowCard).join("") || `<p class="muted">フローがありません。</p>`;
+      }
 
-          document.querySelectorAll("[data-media-id]").forEach((button) => {
-            button.addEventListener("click", () => {
-              document.getElementById("media-id").value = button.dataset.mediaId;
-              showResult({ ok: true, selectedMediaId: button.dataset.mediaId });
-            });
-          });
+      async function loadMedia() {
+        const data = await request("/api/media");
+        document.getElementById("media-list").innerHTML =
+          data.media.map(mediaCard).join("") || `<p class="muted">まだ投稿が保存されていません。「Instagramから同期」を押してください。</p>`;
+        document.querySelectorAll("[data-media-id]").forEach((el) => {
+          el.addEventListener("click", () => selectMedia(el.dataset.mediaId));
+        });
+      }
+
+      async function syncMedia() {
+        setBusy("sync-media", true);
+        try {
+          showTest(await post("/api/sync-media", { limit: 25 }));
+          await Promise.all([loadStatus(), loadMedia(), loadFlows()]);
         } catch (error) {
           showError(error);
         } finally {
-          setBusy("load-media", false);
+          setBusy("sync-media", false);
         }
       }
 
-      async function testMedia() {
-        setBusy("test-media", true);
+      async function selectMedia(mediaId) {
+        selectedMediaId = mediaId;
+        document.getElementById("media-id").value = mediaId;
+        document.querySelectorAll(".media").forEach((el) => {
+          el.classList.toggle("selected", el.dataset.mediaId === mediaId);
+        });
+        const [postData, commentsData] = await Promise.all([
+          request(`/api/media/${mediaId}`),
+          request(`/api/media/${mediaId}/comments`)
+        ]);
+        renderPostDetail(postData.media);
+        renderComments(commentsData.comments);
+      }
+
+      async function syncComments() {
+        if (!selectedMediaId) {
+          showTest({ ok: false, error: "先に投稿を選択してください。" });
+          return;
+        }
+        setBusy("sync-comments", true);
         try {
-          const mediaId = document.getElementById("media-id").value;
-          showResult(await post("/api/test-media", { mediaId }));
+          showTest(await post(`/api/media/${selectedMediaId}/sync-comments`, { limit: 50 }));
+          await selectMedia(selectedMediaId);
+          await loadStatus();
         } catch (error) {
           showError(error);
         } finally {
-          setBusy("test-media", false);
+          setBusy("sync-comments", false);
         }
       }
 
       async function dryRunComment() {
         setBusy("dry-run", true);
         try {
-          const mediaId = document.getElementById("media-id").value;
-          const text = document.getElementById("comment-text").value;
-          showResult(await post("/api/dry-run-comment", { mediaId, text }));
+          showTest(await post("/api/dry-run-comment", {
+            mediaId: document.getElementById("media-id").value,
+            text: document.getElementById("comment-text").value
+          }));
         } catch (error) {
           showError(error);
         } finally {
@@ -622,15 +684,25 @@
         }
       }
 
+      async function checkMarker() {
+        setBusy("check-marker", true);
+        try {
+          showTest(await post("/api/test-media", { mediaId: document.getElementById("media-id").value }));
+        } catch (error) {
+          showError(error);
+        } finally {
+          setBusy("check-marker", false);
+        }
+      }
+
       async function exchangeToken() {
         setBusy("exchange-token", true);
         try {
-          const shortToken = document.getElementById("short-token").value;
-          const data = await post("/api/exchange-token", { shortToken });
-          if (data.longUserToken) {
-            document.getElementById("long-token").value = data.longUserToken;
-          }
-          showTokenResult(data);
+          const data = await post("/api/exchange-token", {
+            shortToken: document.getElementById("short-token").value
+          });
+          if (data.longUserToken) document.getElementById("long-token").value = data.longUserToken;
+          showToken(data);
         } catch (error) {
           showTokenError(error);
         } finally {
@@ -641,9 +713,9 @@
       async function loadPageTokens() {
         setBusy("load-page-tokens", true);
         try {
-          const longUserToken = document.getElementById("long-token").value;
-          const data = await post("/api/page-tokens", { longUserToken });
-          showTokenResult(data);
+          showToken(await post("/api/page-tokens", {
+            longUserToken: document.getElementById("long-token").value
+          }));
         } catch (error) {
           showTokenError(error);
         } finally {
@@ -668,66 +740,108 @@
         return data;
       }
 
-      function mediaRow(item) {
-        const caption = item.caption || "";
-        const active = item.matchedFlow ? " active" : "";
-        const badge = item.matchedFlow
-          ? `<span class="badge good">対象</span>`
-          : `<span class="badge">対象外</span>`;
+      function flowCard(flow) {
+        const choices = Object.entries(flow.choices ?? {})
+          .map(([choice, reply]) => `<p><strong>${choice}</strong> ${escapeHtml(reply.publicReply ?? "")}</p>`)
+          .join("");
         return `
-          <div class="media-row${active}">
-            <div class="media-title">
+          <div class="flow">
+            <div class="line">
               <div>
-                <strong>${escapeHtml(item.media_product_type || item.media_type || "投稿")}</strong>
-                <span class="muted">${escapeHtml(item.timestamp || "")}</span>
+                <h3>${escapeHtml(flow.name)}</h3>
+                <p class="muted"><code>${escapeHtml(flow.marker)}</code> / 紐づき ${flow.linkedMediaCount ?? 0}件</p>
               </div>
-              <button data-media-id="${escapeHtml(item.id)}">選択</button>
+              <span class="badge ${flow.enabled ? "good" : "bad"}">${flow.enabled ? "稼働中" : "停止中"}</span>
             </div>
-            <div><code>${escapeHtml(item.id)}</code> ${badge}</div>
-            <p class="caption">${escapeHtml(caption || "キャプションなし")}</p>
-            ${item.permalink ? `<a href="${escapeHtml(item.permalink)}" target="_blank" rel="noreferrer">Instagramで開く</a>` : ""}
+            <div class="caption">${choices}</div>
+          </div>
+        `;
+      }
+
+      function mediaCard(item) {
+        const image = item.thumbnailUrl || item.mediaUrl || "";
+        const active = item.active ? "good" : "";
+        return `
+          <div class="media ${selectedMediaId === item.mediaId ? "selected" : ""}" data-media-id="${escapeHtml(item.mediaId)}">
+            ${image ? `<img class="thumb" src="${escapeHtml(image)}" alt="">` : `<div class="thumb"></div>`}
+            <div>
+              <div class="line">
+                <div>
+                  <strong>${escapeHtml(item.mediaProductType || item.mediaType || "投稿")}</strong>
+                  <p class="muted">${escapeHtml(formatDate(item.timestamp))}</p>
+                </div>
+                <span class="badge ${active}">${item.active ? "対象" : "対象外"}</span>
+              </div>
+              <p><code>${escapeHtml(item.mediaId)}</code></p>
+              <p class="muted">コメント ${item.commentsCount ?? "-"} / いいね ${item.likeCount ?? "-"}</p>
+              <p class="caption">${escapeHtml(item.caption || "キャプションなし")}</p>
+            </div>
+          </div>
+        `;
+      }
+
+      function renderPostDetail(item) {
+        const image = item.thumbnailUrl || item.mediaUrl || "";
+        document.getElementById("post-detail").innerHTML = `
+          <div class="media selected">
+            ${image ? `<img class="thumb" src="${escapeHtml(image)}" alt="">` : `<div class="thumb"></div>`}
+            <div>
+              <div class="line">
+                <h3>${escapeHtml(item.flowName || "自動化なし")}</h3>
+                <span class="badge ${item.active ? "good" : ""}">${item.active ? "対象リール" : "対象外"}</span>
+              </div>
+              <p><code>${escapeHtml(item.mediaId)}</code></p>
+              <p class="muted">目印: ${escapeHtml(item.matchedMarker || "なし")}</p>
+              <p class="caption">${escapeHtml(item.caption || "キャプションなし")}</p>
+              ${item.permalink ? `<a href="${escapeHtml(item.permalink)}" target="_blank" rel="noreferrer">Instagramで開く</a>` : ""}
+            </div>
+          </div>
+        `;
+      }
+
+      function renderComments(comments) {
+        document.getElementById("comment-list").innerHTML =
+          comments.map(commentCard).join("") || `<p class="muted">保存済みコメントはありません。「コメントを取得」を押してください。</p>`;
+      }
+
+      function commentCard(comment) {
+        const owner = comment.isOwnerComment ? " owner" : "";
+        return `
+          <div class="comment${owner}">
+            <div class="line">
+              <div>
+                <strong>@${escapeHtml(comment.username || "unknown")}</strong>
+                <span class="muted">${escapeHtml(formatDate(comment.createdAt || comment.firstSeenAt))}</span>
+              </div>
+              <span class="badge ${statusClass(comment.automationStatus)}">${escapeHtml(statusLabel(comment.automationStatus))}</span>
+            </div>
+            <p class="caption">${escapeHtml(comment.text || "")}</p>
+            <div class="line">
+              <span>番号: <span class="choice">${escapeHtml(comment.choice || "-")}</span></span>
+              <span class="muted">${comment.privateReply ? "DM文あり" : ""}</span>
+            </div>
           </div>
         `;
       }
 
       function renderEvents(events) {
         document.getElementById("events-body").innerHTML =
-          events
-            .map(
-              (event) => `
-                <tr>
-                  <td>${escapeHtml(new Date(event.at).toLocaleString())}</td>
-                  <td>${escapeHtml(statusLabel(event.status))}</td>
-                  <td><code>${escapeHtml(event.mediaId ?? "")}</code></td>
-                  <td><code>${escapeHtml(event.commentId ?? "")}</code></td>
-                  <td>${escapeHtml(event.choice ?? "")}</td>
-                  <td>${escapeHtml(detailLabel(event))}</td>
-                </tr>
-              `
-            )
-            .join("") || `<tr><td colspan="6" class="muted">まだ受信履歴はありません。</td></tr>`;
+          events.map((event) => `
+            <tr>
+              <td>${escapeHtml(formatDate(event.at))}</td>
+              <td>${escapeHtml(eventStatusLabel(event.status))}</td>
+              <td><code>${escapeHtml(event.mediaId ?? "")}</code></td>
+              <td><code>${escapeHtml(event.commentId ?? "")}</code></td>
+              <td>${escapeHtml(event.choice ?? "")}</td>
+              <td>${escapeHtml(detailLabel(event))}</td>
+            </tr>
+          `).join("") || `<tr><td colspan="6" class="muted">まだ履歴はありません。</td></tr>`;
       }
 
       function copyWebhookUrl() {
         const url = `${location.origin}/webhook`;
         navigator.clipboard.writeText(url);
-        showResult({ ok: true, webhookUrl: url });
-      }
-
-      function showResult(data) {
-        document.getElementById("test-result").textContent = JSON.stringify(data, null, 2);
-      }
-
-      function showTokenResult(data) {
-        document.getElementById("token-result").textContent = JSON.stringify(data, null, 2);
-      }
-
-      function showError(error) {
-        showResult({ ok: false, error: error instanceof Error ? error.message : String(error) });
-      }
-
-      function showTokenError(error) {
-        showTokenResult({ ok: false, error: error instanceof Error ? error.message : String(error) });
+        showTest({ ok: true, webhookUrl: url });
       }
 
       function row(label, value) {
@@ -735,23 +849,38 @@
       }
 
       function status(value) {
-        return value ? '<span class="ok">設定済み</span>' : '<span class="bad">未設定</span>';
+        return value ? '<span class="ok">設定済み</span>' : '<span class="bad-text">未設定</span>';
       }
 
       function statusLabel(value) {
         return {
+          unprocessed: "未処理",
           received: "受信",
-          ignored: "無視",
-          sent: "送信済み",
+          dm_sent: "DM送信済み",
+          owner_comment: "自分のコメント",
+          ignored: "対象外コメント",
+          outside_target: "対象外リール",
+          already_processed: "送信済み",
+          flow_paused: "フロー停止中",
           error: "エラー"
-        }[value] || value || "";
+        }[value] || value || "未処理";
+      }
+
+      function statusClass(value) {
+        return value === "dm_sent" ? "good" : value === "error" ? "bad" : "";
+      }
+
+      function eventStatusLabel(value) {
+        return { received: "受信", ignored: "無視", sent: "送信済み", error: "エラー", sync: "同期" }[value] || value || "";
       }
 
       function detailLabel(event) {
         const details = {
+          owner_comment: "自分のコメントなので送信しません",
           missing_id_or_choice: "コメント本文から1/2/3を判定できませんでした",
-          already_processed: "すでに返信済みのコメントです",
-          no_caption_marker: "投稿キャプションに対象マーカーがありません"
+          already_processed: "すでに返信済みです",
+          no_caption_marker: "対象リールではありません",
+          flow_paused: "フローが停止中です"
         };
         return details[event.reason] || event.message || event.marker || event.text || "";
       }
@@ -760,6 +889,7 @@
         return {
           VERIFY_TOKEN: "Webhook認証トークン",
           IG_USER_ID: "InstagramアカウントID",
+          IG_USERNAME: "自分のInstagramユーザー名",
           ACCESS_TOKEN: "Metaアクセストークン",
           ADMIN_TOKEN: "管理画面トークン",
           DATABASE_URL: "Postgres接続",
@@ -770,8 +900,28 @@
         }[key] || key;
       }
 
+      function showTest(data) {
+        document.getElementById("test-result").textContent = JSON.stringify(data, null, 2);
+      }
+
+      function showError(error) {
+        showTest({ ok: false, error: error instanceof Error ? error.message : String(error) });
+      }
+
+      function showToken(data) {
+        document.getElementById("token-result").textContent = JSON.stringify(data, null, 2);
+      }
+
+      function showTokenError(error) {
+        showToken({ ok: false, error: error instanceof Error ? error.message : String(error) });
+      }
+
       function setBusy(id, busy) {
         document.getElementById(id).disabled = busy;
+      }
+
+      function formatDate(value) {
+        return value ? new Date(value).toLocaleString() : "";
       }
 
       function escapeHtml(value) {

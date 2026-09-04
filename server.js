@@ -4,16 +4,24 @@ import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  findDbFlowByMarker,
+  getFlows,
+  getLinkedFlowForMedia,
+  getMediaComments,
+  getMediaPost,
+  getMediaPosts,
   getRecentEvents,
   getStats,
-  getStoredMediaFlow,
   getDatabaseStatus,
   hasDatabase,
   hasProcessedComment,
   initDatabase,
   saveEvent,
-  saveMediaFlow,
-  saveProcessedComment
+  saveProcessedComment,
+  setFlowEnabled,
+  updateCommentStatus,
+  upsertMediaComment,
+  upsertMediaPost
 } from "./db.js";
 import { findFlow, flows, parseChoice } from "./flows.js";
 
@@ -31,6 +39,7 @@ const {
   DATABASE_URL,
   APP_ID,
   APP_SECRET,
+  IG_USERNAME,
   GRAPH_BASE_URL = "https://graph.facebook.com",
   GRAPH_API_VERSION = "v25.0"
 } = process.env;
@@ -105,23 +114,38 @@ app.get("/api/status", requireAdmin, async (_req, res) => {
       DATABASE_URL: Boolean(DATABASE_URL),
       APP_ID: Boolean(APP_ID),
       APP_SECRET: Boolean(APP_SECRET),
+      IG_USERNAME: Boolean(IG_USERNAME),
       GRAPH_BASE_URL,
       GRAPH_API_VERSION
     },
     database: {
       ...getDatabaseStatus()
     },
-    flows: flows.map((flow) => ({
-      marker: flow.marker,
-      choices: Object.keys(flow.choices)
-    })),
+    flows: (await getFlows()) ?? localFlows(),
     stats: dbStats ?? {
-      processedComments: processedComments.size,
-      cachedMedia: mediaFlowCache.size,
+      activeFlows: flows.filter((flow) => flow.enabled !== false).length,
+      activePosts: mediaFlowCache.size,
+      sentToday: processedComments.size,
+      errorsToday: recentEvents.filter((event) => event.status === "error").length,
       recentEvents: recentEvents.length
     },
     recentEvents: dbEvents ?? recentEvents
   });
+});
+
+app.get("/api/flows", requireAdmin, async (_req, res) => {
+  res.json({ ok: true, flows: (await getFlows()) ?? localFlows() });
+});
+
+app.post("/api/flows/:flowId/toggle", requireAdmin, async (req, res) => {
+  try {
+    const enabled = Boolean(req.body?.enabled);
+    const flow = await setFlowEnabled(req.params.flowId, enabled);
+    mediaFlowCache.clear();
+    res.json({ ok: true, flow });
+  } catch (error) {
+    res.status(500).json({ ok: false, error: errorMessage(error) });
+  }
 });
 
 app.post("/api/exchange-token", requireAdmin, async (req, res) => {
@@ -185,6 +209,77 @@ app.get("/api/latest-media", requireAdmin, async (req, res) => {
         matchedFlow: findFlow(item.caption ?? "")?.marker ?? null
       }))
     });
+  } catch (error) {
+    res.status(500).json({ ok: false, error: errorMessage(error) });
+  }
+});
+
+app.get("/api/media", requireAdmin, async (_req, res) => {
+  res.json({ ok: true, media: (await getMediaPosts()) ?? [] });
+});
+
+app.post("/api/sync-media", requireAdmin, async (req, res) => {
+  try {
+    const limit = Math.min(Number(req.body?.limit ?? 25), 50);
+    const media = await getLatestMedia(limit);
+    const saved = [];
+
+    for (const item of media) {
+      const flow = await findFlowForCaption(item.caption ?? "");
+      const result = await upsertMediaPost(item, flow);
+      saved.push({
+        mediaId: item.id,
+        matchedMarker: flow?.marker ?? null,
+        active: Boolean(flow),
+        changes: result.changes
+      });
+
+      if (result.changes.length > 0) {
+        addEvent({
+          status: "sync",
+          mediaId: item.id,
+          marker: flow?.marker ?? null,
+          message: `投稿を同期しました: ${result.changes.join(", ")}`
+        });
+      }
+    }
+
+    res.json({ ok: true, count: saved.length, saved });
+  } catch (error) {
+    res.status(500).json({ ok: false, error: errorMessage(error) });
+  }
+});
+
+app.get("/api/media/:mediaId", requireAdmin, async (req, res) => {
+  const media = await getMediaPost(req.params.mediaId);
+  if (!media) return res.status(404).json({ ok: false, error: "media not found" });
+  res.json({ ok: true, media });
+});
+
+app.get("/api/media/:mediaId/comments", requireAdmin, async (req, res) => {
+  res.json({ ok: true, comments: (await getMediaComments(req.params.mediaId)) ?? [] });
+});
+
+app.post("/api/media/:mediaId/sync-comments", requireAdmin, async (req, res) => {
+  try {
+    const mediaId = req.params.mediaId;
+    const limit = Math.min(Number(req.body?.limit ?? 50), 50);
+    const comments = await getMediaCommentsFromInstagram(mediaId, limit);
+    let saved = 0;
+
+    for (const comment of comments) {
+      const normalized = normalizeComment({ ...comment, media: { id: mediaId } });
+      const isOwner = isOwnerComment(normalized);
+      await upsertMediaComment({
+        ...normalized,
+        isOwnerComment: isOwner,
+        automationStatus: isOwner ? "owner_comment" : "unprocessed"
+      });
+      saved += 1;
+    }
+
+    addEvent({ status: "sync", mediaId, message: `${saved}件のコメントを同期しました` });
+    res.json({ ok: true, count: saved });
   } catch (error) {
     res.status(500).json({ ok: false, error: errorMessage(error) });
   }
@@ -263,32 +358,52 @@ app.post("/webhook", (req, res) => {
 });
 
 async function handleComment(comment) {
-  const commentId = comment?.id;
-  const mediaId = comment?.media?.id;
-  const choice = parseChoice(comment?.text);
-  const username = comment?.from?.username ?? "";
+  const normalized = normalizeComment(comment);
+  const { commentId, mediaId, choice, username } = normalized;
 
   addEvent({
     status: "received",
     commentId,
     mediaId,
     username,
-    text: comment?.text ?? "",
+    text: normalized.text,
     choice
   });
 
+  const ownerComment = isOwnerComment(normalized);
+  if (commentId && mediaId) {
+    await upsertMediaComment({
+      ...normalized,
+      isOwnerComment: ownerComment,
+      automationStatus: ownerComment ? "owner_comment" : "received"
+    });
+  }
+
+  if (ownerComment) {
+    addEvent({ status: "ignored", reason: "owner_comment", commentId, mediaId, choice, username });
+    return;
+  }
+
   if (!commentId || !mediaId || !choice) {
+    await updateCommentStatus(commentId, "ignored");
     addEvent({ status: "ignored", reason: "missing_id_or_choice", commentId, mediaId, choice });
     return;
   }
   if (processedComments.has(commentId) || (await hasProcessedComment(commentId))) {
+    await updateCommentStatus(commentId, "already_processed");
     addEvent({ status: "ignored", reason: "already_processed", commentId, mediaId, choice });
     return;
   }
 
   const flow = await getFlowForMedia(mediaId);
   if (!flow) {
+    await updateCommentStatus(commentId, "outside_target");
     addEvent({ status: "ignored", reason: "no_caption_marker", commentId, mediaId, choice });
+    return;
+  }
+  if (flow.enabled === false) {
+    await updateCommentStatus(commentId, "flow_paused");
+    addEvent({ status: "ignored", reason: "flow_paused", commentId, mediaId, choice });
     return;
   }
 
@@ -304,6 +419,18 @@ async function handleComment(comment) {
       choice,
       message: error instanceof Error ? error.message : String(error)
     });
+    await updateCommentStatus(commentId, "error", errorMessage(error));
+    await saveProcessedComment({
+      commentId,
+      mediaId,
+      choice,
+      username,
+      text: normalized.text,
+      publicReply: reply.publicReply,
+      privateReply: reply.privateReply,
+      status: "error",
+      errorMessage: errorMessage(error)
+    });
     throw error;
   }
 
@@ -313,8 +440,12 @@ async function handleComment(comment) {
     mediaId,
     choice,
     username,
-    text: comment?.text ?? ""
+    text: normalized.text,
+    publicReply: reply.publicReply,
+    privateReply: reply.privateReply,
+    status: "sent"
   });
+  await updateCommentStatus(commentId, "dm_sent");
   addEvent({ status: "sent", commentId, mediaId, choice, marker: flow.marker });
   console.log(`sent reply: media=${mediaId} comment=${commentId} choice=${choice}`);
 }
@@ -324,23 +455,24 @@ async function getFlowForMedia(mediaId) {
     return mediaFlowCache.get(mediaId);
   }
 
-  const stored = await getStoredMediaFlow(mediaId);
+  const stored = await getLinkedFlowForMedia(mediaId);
   if (stored) {
-    const storedFlow = stored.matched ? flows.find((flow) => flow.marker === stored.marker) ?? null : null;
-    mediaFlowCache.set(mediaId, storedFlow);
-    return storedFlow;
+    mediaFlowCache.set(mediaId, stored);
+    return stored;
   }
 
-  const caption = await getMediaCaption(mediaId);
-  const flow = findFlow(caption) ?? null;
+  const media = await getMedia(mediaId);
+  const flow = await findFlowForCaption(media.caption ?? "");
   mediaFlowCache.set(mediaId, flow);
-  await saveMediaFlow({
-    mediaId,
-    marker: flow?.marker ?? null,
-    caption,
-    matched: Boolean(flow)
-  });
+  await upsertMediaPost(media, flow);
   return flow;
+}
+
+async function findFlowForCaption(caption) {
+  const localFlow = findFlow(caption) ?? null;
+  if (!localFlow) return null;
+  const dbFlow = await findDbFlowByMarker(localFlow.marker);
+  return dbFlow ?? localFlow;
 }
 
 async function graphRequest(path, options = {}) {
@@ -373,15 +505,30 @@ async function fetchJson(url, options = {}) {
 }
 
 async function getMediaCaption(mediaId) {
-  const media = await graphRequest(`/${mediaId}`, {
-    fields: "id,caption"
-  });
+  const media = await getMedia(mediaId);
   return media.caption ?? "";
+}
+
+async function getMedia(mediaId) {
+  return graphRequest(`/${mediaId}`, {
+    fields:
+      "id,caption,media_type,media_product_type,media_url,thumbnail_url,permalink,timestamp,comments_count,like_count"
+  });
 }
 
 async function getLatestMedia(limit) {
   const response = await graphRequest(`/${IG_USER_ID}/media`, {
-    fields: "id,caption,media_type,media_product_type,permalink,timestamp",
+    fields:
+      "id,caption,media_type,media_product_type,media_url,thumbnail_url,permalink,timestamp,comments_count,like_count",
+    query: { limit: String(limit) }
+  });
+
+  return response.data ?? [];
+}
+
+async function getMediaCommentsFromInstagram(mediaId, limit) {
+  const response = await graphRequest(`/${mediaId}/comments`, {
+    fields: "id,text,username,timestamp,like_count,hidden,from",
     query: { limit: String(limit) }
   });
 
@@ -434,7 +581,39 @@ function errorMessage(error) {
   return error instanceof Error ? error.message : String(error);
 }
 
-initDatabase()
+function normalizeComment(comment) {
+  const text = comment?.text ?? "";
+  return {
+    commentId: comment?.id,
+    mediaId: comment?.media?.id,
+    username: comment?.from?.username ?? comment?.username ?? "",
+    userId: comment?.from?.id ?? "",
+    text,
+    choice: parseChoice(text),
+    likeCount: comment?.like_count ?? null,
+    hidden: comment?.hidden ?? null,
+    createdAt: comment?.timestamp ?? null
+  };
+}
+
+function isOwnerComment(comment) {
+  if (comment.userId && IG_USER_ID && comment.userId === IG_USER_ID) return true;
+  if (!comment.username || !IG_USERNAME) return false;
+  return comment.username.toLowerCase() === IG_USERNAME.replace(/^@/, "").toLowerCase();
+}
+
+function localFlows() {
+  return flows.map((flow) => ({
+    id: flow.id,
+    name: flow.name,
+    marker: flow.marker,
+    enabled: flow.enabled !== false,
+    choices: flow.choices,
+    linkedMediaCount: 0
+  }));
+}
+
+initDatabase(flows)
   .then(() => {
     app.listen(Number(PORT), () => {
       console.log(`listening on port ${PORT}`);
