@@ -64,9 +64,13 @@ https://YOUR-RAILWAY-DOMAIN.up.railway.app/admin?token=ADMIN_TOKENの値
 - 投稿ごとのキャプション目印チェック
 - サムネ付き対象リール一覧
 - 投稿ごとのコメント一覧
+- コメントごとの `comment_id` / `media_id` / ユーザー情報
+- コメント単体の再取得
+- Metaのコメント取得APIレスポンスの生JSON表示
 - 自分のコメント除外
 - コメント文の疑似判定
 - 自動化フロー一覧
+- 1/2/3ごとの公開返信バリエーション編集
 - 今日のDM送信数とエラー数
 - 短期User TokenからPage Access Tokenを取得
 - 受信したコメント、無視した理由、送信結果、エラー
@@ -130,7 +134,10 @@ https://YOUR-RAILWAY-DOMAIN.up.railway.app/privacy
 
 ## 鑑定文の編集
 
-`flows.js` のこのあたりを書き換えます。
+公開コメント返信は、管理画面の「自動化フロー」から編集できます。
+1行につき1パターンとして保存され、送信時にランダムで選ばれます。
+
+DM鑑定文は固定文として扱うので、変更したい場合は `flows.js` のこのあたりを書き換えます。
 
 ```js
 privateReply: "1を選んだあなたへ..."

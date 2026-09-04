@@ -5,6 +5,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   findDbFlowByMarker,
+  getComment,
   getFlows,
   getLinkedFlowForMedia,
   getMediaComments,
@@ -19,11 +20,12 @@ import {
   saveEvent,
   saveProcessedComment,
   setFlowEnabled,
+  updateFlowChoices,
   updateCommentStatus,
   upsertMediaComment,
   upsertMediaPost
 } from "./db.js";
-import { findFlow, flows, parseChoice } from "./flows.js";
+import { findFlow, flows, normalizeChoices, normalizePublicReplies, parseChoice } from "./flows.js";
 
 const app = express();
 app.use(express.json());
@@ -134,7 +136,7 @@ app.get("/api/status", requireAdmin, async (_req, res) => {
 });
 
 app.get("/api/flows", requireAdmin, async (_req, res) => {
-  res.json({ ok: true, flows: (await getFlows()) ?? localFlows() });
+  res.json({ ok: true, flows: normalizeFlowList((await getFlows()) ?? localFlows()) });
 });
 
 app.post("/api/flows/:flowId/toggle", requireAdmin, async (req, res) => {
@@ -143,6 +145,41 @@ app.post("/api/flows/:flowId/toggle", requireAdmin, async (req, res) => {
     const flow = await setFlowEnabled(req.params.flowId, enabled);
     mediaFlowCache.clear();
     res.json({ ok: true, flow });
+  } catch (error) {
+    res.status(500).json({ ok: false, error: errorMessage(error) });
+  }
+});
+
+app.put("/api/flows/:flowId/replies", requireAdmin, async (req, res) => {
+  try {
+    const incoming = req.body?.choices ?? {};
+    const choices = {};
+
+    for (const choice of ["1", "2", "3"]) {
+      const reply = incoming[choice] ?? {};
+      const publicReplies = Array.isArray(reply.publicReplies)
+        ? reply.publicReplies.map((item) => String(item).trim()).filter(Boolean)
+        : String(reply.publicRepliesText ?? "")
+            .split("\n")
+            .map((item) => item.trim())
+            .filter(Boolean);
+
+      if (publicReplies.length === 0) {
+        return res.status(400).json({
+          ok: false,
+          error: `${choice}番の公開返信を1つ以上入れてください`
+        });
+      }
+
+      choices[choice] = {
+        publicReplies,
+        privateReply: String(reply.privateReply ?? "").trim()
+      };
+    }
+
+    const flow = await updateFlowChoices(req.params.flowId, choices);
+    mediaFlowCache.clear();
+    res.json({ ok: true, flow: normalizeFlow(flow) });
   } catch (error) {
     res.status(500).json({ ok: false, error: errorMessage(error) });
   }
@@ -260,6 +297,16 @@ app.get("/api/media/:mediaId/comments", requireAdmin, async (req, res) => {
   res.json({ ok: true, comments: (await getMediaComments(req.params.mediaId)) ?? [] });
 });
 
+app.get("/api/media/:mediaId/comments/raw", requireAdmin, async (req, res) => {
+  try {
+    const limit = Math.min(Number(req.query.limit ?? 50), 50);
+    const raw = await getMediaCommentsRaw(req.params.mediaId, limit);
+    res.json({ ok: true, raw });
+  } catch (error) {
+    res.status(500).json({ ok: false, error: errorMessage(error) });
+  }
+});
+
 app.post("/api/media/:mediaId/sync-comments", requireAdmin, async (req, res) => {
   try {
     const mediaId = req.params.mediaId;
@@ -281,6 +328,31 @@ app.post("/api/media/:mediaId/sync-comments", requireAdmin, async (req, res) => 
     addEvent({ status: "sync", mediaId, message: `${saved}件のコメントを同期しました` });
     res.json({ ok: true, count: saved });
   } catch (error) {
+    res.status(500).json({ ok: false, error: errorMessage(error) });
+  }
+});
+
+app.post("/api/comments/:commentId/refresh", requireAdmin, async (req, res) => {
+  try {
+    const commentId = req.params.commentId;
+    const existing = await getComment(commentId);
+    const raw = await getCommentFromInstagram(commentId);
+    const normalized = normalizeComment({
+      ...raw,
+      media: { id: raw?.media?.id ?? existing?.mediaId }
+    });
+    const isOwner = isOwnerComment(normalized);
+
+    await upsertMediaComment({
+      ...normalized,
+      mediaId: normalized.mediaId ?? existing?.mediaId,
+      isOwnerComment: isOwner,
+      automationStatus: isOwner ? "owner_comment" : existing?.automationStatus ?? "unprocessed"
+    });
+
+    res.json({ ok: true, raw, comment: await getComment(commentId) });
+  } catch (error) {
+    await updateCommentStatus(req.params.commentId, "error", errorMessage(error));
     res.status(500).json({ ok: false, error: errorMessage(error) });
   }
 });
@@ -314,7 +386,7 @@ app.post("/api/dry-run-comment", requireAdmin, async (req, res) => {
 
     const choice = parseChoice(text);
     const flow = await getFlowForMedia(mediaId);
-    const reply = choice && flow ? flow.choices[choice] : null;
+    const reply = choice && flow ? pickReply(flow.choices[choice]) : null;
 
     res.json({
       ok: true,
@@ -325,6 +397,7 @@ app.post("/api/dry-run-comment", requireAdmin, async (req, res) => {
       marker: flow?.marker ?? null,
       wouldSend: Boolean(reply),
       publicReply: reply?.publicReply ?? null,
+      publicReplies: flow && choice ? normalizePublicReplies(flow.choices[choice]) : [],
       privateReply: reply?.privateReply ?? null
     });
   } catch (error) {
@@ -371,11 +444,22 @@ async function handleComment(comment) {
   });
 
   const ownerComment = isOwnerComment(normalized);
-  if (commentId && mediaId) {
+  if (commentId) {
     await upsertMediaComment({
       ...normalized,
       isOwnerComment: ownerComment,
       automationStatus: ownerComment ? "owner_comment" : "received"
+    });
+  }
+
+  if (!normalized.username && !normalized.userId) {
+    addEvent({
+      status: "received",
+      reason: "user_info_missing",
+      commentId,
+      mediaId,
+      choice,
+      message: "ユーザー情報未取得。comment_idがあればPrivate Replyは可能です"
     });
   }
 
@@ -407,7 +491,7 @@ async function handleComment(comment) {
     return;
   }
 
-  const reply = flow.choices[choice];
+  const reply = pickReply(flow.choices[choice]);
   try {
     await replyToComment(commentId, reply.publicReply);
     await sendPrivateReply(commentId, reply.privateReply);
@@ -457,8 +541,9 @@ async function getFlowForMedia(mediaId) {
 
   const stored = await getLinkedFlowForMedia(mediaId);
   if (stored) {
-    mediaFlowCache.set(mediaId, stored);
-    return stored;
+    const normalizedStored = normalizeFlow(stored);
+    mediaFlowCache.set(mediaId, normalizedStored);
+    return normalizedStored;
   }
 
   const media = await getMedia(mediaId);
@@ -472,7 +557,7 @@ async function findFlowForCaption(caption) {
   const localFlow = findFlow(caption) ?? null;
   if (!localFlow) return null;
   const dbFlow = await findDbFlowByMarker(localFlow.marker);
-  return dbFlow ?? localFlow;
+  return normalizeFlow(dbFlow ?? localFlow);
 }
 
 async function graphRequest(path, options = {}) {
@@ -498,7 +583,9 @@ async function fetchJson(url, options = {}) {
   const response = await fetch(url, options);
   const json = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(json?.error?.message ?? `Meta API error: ${response.status}`);
+    const message = json?.error?.message ?? `Meta API error: ${response.status}`;
+    const detail = Object.keys(json).length ? `${message} ${JSON.stringify(json)}` : message;
+    throw new Error(detail);
   }
 
   return json;
@@ -527,12 +614,21 @@ async function getLatestMedia(limit) {
 }
 
 async function getMediaCommentsFromInstagram(mediaId, limit) {
-  const response = await graphRequest(`/${mediaId}/comments`, {
+  const response = await getMediaCommentsRaw(mediaId, limit);
+  return response.data ?? [];
+}
+
+async function getMediaCommentsRaw(mediaId, limit) {
+  return graphRequest(`/${mediaId}/comments`, {
     fields: "id,text,username,timestamp,like_count,hidden,from",
     query: { limit: String(limit) }
   });
+}
 
-  return response.data ?? [];
+async function getCommentFromInstagram(commentId) {
+  return graphRequest(`/${commentId}`, {
+    fields: "id,text,username,timestamp,like_count,hidden,from,media"
+  });
 }
 
 async function replyToComment(commentId, message) {
@@ -596,6 +692,28 @@ function normalizeComment(comment) {
   };
 }
 
+function normalizeFlow(flow) {
+  if (!flow) return null;
+  return {
+    ...flow,
+    choices: normalizeChoices(flow.choices ?? {})
+  };
+}
+
+function normalizeFlowList(flowList) {
+  return flowList.map(normalizeFlow).filter(Boolean);
+}
+
+function pickReply(reply) {
+  const publicReplies = normalizePublicReplies(reply);
+  const publicReply =
+    publicReplies[Math.floor(Math.random() * publicReplies.length)] ?? reply?.publicReply ?? "";
+  return {
+    publicReply,
+    privateReply: reply?.privateReply ?? ""
+  };
+}
+
 function isOwnerComment(comment) {
   if (comment.userId && IG_USER_ID && comment.userId === IG_USER_ID) return true;
   if (!comment.username || !IG_USERNAME) return false;
@@ -608,7 +726,7 @@ function localFlows() {
     name: flow.name,
     marker: flow.marker,
     enabled: flow.enabled !== false,
-    choices: flow.choices,
+    choices: normalizeChoices(flow.choices),
     linkedMediaCount: 0
   }));
 }

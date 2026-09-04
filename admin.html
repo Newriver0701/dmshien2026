@@ -27,7 +27,8 @@
       }
 
       button,
-      input {
+      input,
+      textarea {
         font: inherit;
       }
 
@@ -52,12 +53,22 @@
         cursor: progress;
       }
 
-      input {
+      input,
+      textarea {
         width: 100%;
-        min-height: 40px;
         border: 1px solid #c8d1dc;
         border-radius: 7px;
         padding: 8px 11px;
+      }
+
+      input {
+        min-height: 40px;
+      }
+
+      textarea {
+        min-height: 78px;
+        resize: vertical;
+        line-height: 1.45;
       }
 
       a {
@@ -317,6 +328,48 @@
         opacity: 0.58;
       }
 
+      .comment-detail {
+        margin-top: 10px;
+        display: none;
+        padding-top: 10px;
+        border-top: 1px solid #eef1f5;
+      }
+
+      .comment.open .comment-detail {
+        display: block;
+      }
+
+      .id-grid {
+        display: grid;
+        gap: 6px;
+        margin-top: 9px;
+      }
+
+      .id-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        color: #475467;
+        font-size: 12px;
+      }
+
+      .id-row code {
+        word-break: break-all;
+      }
+
+      .mini {
+        min-height: 30px;
+        padding: 5px 8px;
+        font-size: 12px;
+      }
+
+      .reply-editor {
+        display: grid;
+        gap: 10px;
+        margin-top: 12px;
+      }
+
       .choice {
         font-size: 20px;
         font-weight: 800;
@@ -345,6 +398,15 @@
         color: #344054;
         max-height: 250px;
         overflow: auto;
+      }
+
+      .raw-box {
+        display: none;
+        margin-top: 12px;
+      }
+
+      .raw-box.open {
+        display: block;
       }
 
       .kv {
@@ -489,9 +551,22 @@
               <section class="panel" id="detail">
                 <div class="head">
                   <h2>投稿詳細</h2>
-                  <button id="sync-comments">コメントを取得</button>
+                  <div class="row-actions">
+                    <button id="raw-comments">コメントAPIのJSONを見る</button>
+                    <button id="sync-comments">コメントを取得</button>
+                  </div>
                 </div>
                 <div id="post-detail" class="muted">投稿を選択してください。</div>
+                <div class="raw-box" id="raw-box">
+                  <div class="head">
+                    <h3>Meta API レスポンス</h3>
+                    <div class="row-actions">
+                      <button class="mini" id="copy-json">JSONをコピー</button>
+                      <button class="mini" id="close-json">閉じる</button>
+                    </div>
+                  </div>
+                  <div class="result" id="raw-result"></div>
+                </div>
                 <div class="comment-list" id="comment-list"></div>
               </section>
 
@@ -571,11 +646,15 @@
       const api = (path) =>
         token ? `${path}${path.includes("?") ? "&" : "?"}token=${encodeURIComponent(token)}` : path;
       let selectedMediaId = "";
+      let lastRawJson = "";
 
       document.getElementById("refresh").addEventListener("click", refreshAll);
       document.getElementById("load-flows").addEventListener("click", loadFlows);
       document.getElementById("sync-media").addEventListener("click", syncMedia);
       document.getElementById("sync-comments").addEventListener("click", syncComments);
+      document.getElementById("raw-comments").addEventListener("click", showRawComments);
+      document.getElementById("copy-json").addEventListener("click", copyRawJson);
+      document.getElementById("close-json").addEventListener("click", closeRawJson);
       document.getElementById("dry-run").addEventListener("click", dryRunComment);
       document.getElementById("check-marker").addEventListener("click", checkMarker);
       document.getElementById("copy-webhook").addEventListener("click", copyWebhookUrl);
@@ -616,6 +695,12 @@
         const data = await request("/api/flows");
         document.getElementById("flow-list").innerHTML =
           data.flows.map(flowCard).join("") || `<p class="muted">フローがありません。</p>`;
+        document.querySelectorAll("[data-toggle-flow]").forEach((button) => {
+          button.addEventListener("click", () => toggleFlow(button.dataset.toggleFlow, button.dataset.enabled !== "true"));
+        });
+        document.querySelectorAll("[data-save-flow]").forEach((button) => {
+          button.addEventListener("click", () => saveFlowReplies(button.dataset.saveFlow));
+        });
       }
 
       async function loadMedia() {
@@ -668,6 +753,34 @@
         } finally {
           setBusy("sync-comments", false);
         }
+      }
+
+      async function showRawComments() {
+        if (!selectedMediaId) {
+          showTest({ ok: false, error: "先に投稿を選択してください。" });
+          return;
+        }
+        setBusy("raw-comments", true);
+        try {
+          const data = await request(`/api/media/${selectedMediaId}/comments/raw`);
+          lastRawJson = JSON.stringify(data.raw ?? data, null, 2);
+          document.getElementById("raw-result").textContent = lastRawJson;
+          document.getElementById("raw-box").classList.add("open");
+        } catch (error) {
+          lastRawJson = JSON.stringify({ ok: false, error: error instanceof Error ? error.message : String(error) }, null, 2);
+          document.getElementById("raw-result").textContent = lastRawJson;
+          document.getElementById("raw-box").classList.add("open");
+        } finally {
+          setBusy("raw-comments", false);
+        }
+      }
+
+      function copyRawJson() {
+        navigator.clipboard.writeText(lastRawJson || document.getElementById("raw-result").textContent);
+      }
+
+      function closeRawJson() {
+        document.getElementById("raw-box").classList.remove("open");
       }
 
       async function dryRunComment() {
@@ -723,6 +836,36 @@
         }
       }
 
+      async function toggleFlow(flowId, enabled) {
+        try {
+          await post(`/api/flows/${flowId}/toggle`, { enabled });
+          await Promise.all([loadFlows(), loadStatus()]);
+        } catch (error) {
+          showError(error);
+        }
+      }
+
+      async function saveFlowReplies(flowId) {
+        const container = document.querySelector(`[data-flow="${cssValue(flowId)}"]`);
+        if (!container) return;
+
+        const choices = {};
+        for (const choice of ["1", "2", "3"]) {
+          choices[choice] = {
+            publicRepliesText: container.querySelector(`[data-public-replies="${choice}"]`)?.value ?? "",
+            privateReply: container.querySelector(`[data-private-reply="${choice}"]`)?.value ?? ""
+          };
+        }
+
+        try {
+          const data = await put(`/api/flows/${flowId}/replies`, { choices });
+          showTest({ ok: true, message: "公開返信バリエーションを保存しました", flow: data.flow });
+          await loadFlows();
+        } catch (error) {
+          showError(error);
+        }
+      }
+
       async function request(path) {
         const response = await fetch(api(path));
         if (!response.ok) throw new Error(await response.text());
@@ -740,12 +883,39 @@
         return data;
       }
 
+      async function put(path, body) {
+        const response = await fetch(api(path), {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body)
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || response.statusText);
+        return data;
+      }
+
       function flowCard(flow) {
-        const choices = Object.entries(flow.choices ?? {})
-          .map(([choice, reply]) => `<p><strong>${choice}</strong> ${escapeHtml(reply.publicReply ?? "")}</p>`)
+        const choices = ["1", "2", "3"]
+          .map((choice) => {
+            const reply = flow.choices?.[choice] ?? {};
+            const repliesText = publicRepliesFor(reply).join("\n");
+            return `
+              <div class="reply-editor">
+                <div class="line">
+                  <strong>${choice}番の公開返信</strong>
+                  <span class="muted">1行=1パターン</span>
+                </div>
+                <textarea data-public-replies="${choice}">${escapeHtml(repliesText)}</textarea>
+                <div class="field">
+                  <label>DM本文 固定</label>
+                  <textarea data-private-reply="${choice}" readonly>${escapeHtml(reply.privateReply ?? "")}</textarea>
+                </div>
+              </div>
+            `;
+          })
           .join("");
         return `
-          <div class="flow">
+          <div class="flow" data-flow="${escapeHtml(flow.id)}">
             <div class="line">
               <div>
                 <h3>${escapeHtml(flow.name)}</h3>
@@ -753,7 +923,13 @@
               </div>
               <span class="badge ${flow.enabled ? "good" : "bad"}">${flow.enabled ? "稼働中" : "停止中"}</span>
             </div>
-            <div class="caption">${choices}</div>
+            ${choices}
+            <div class="row-actions">
+              <button class="primary" data-save-flow="${escapeHtml(flow.id)}">返信バリエーションを保存</button>
+              <button data-toggle-flow="${escapeHtml(flow.id)}" data-enabled="${flow.enabled ? "true" : "false"}">
+                ${flow.enabled ? "フローを停止" : "フローを稼働"}
+              </button>
+            </div>
           </div>
         `;
       }
@@ -802,26 +978,86 @@
       function renderComments(comments) {
         document.getElementById("comment-list").innerHTML =
           comments.map(commentCard).join("") || `<p class="muted">保存済みコメントはありません。「コメントを取得」を押してください。</p>`;
+        document.querySelectorAll("[data-copy]").forEach((button) => {
+          button.addEventListener("click", () => navigator.clipboard.writeText(button.dataset.copy ?? ""));
+        });
+        document.querySelectorAll("[data-toggle-comment]").forEach((button) => {
+          button.addEventListener("click", () => {
+            button.closest(".comment")?.classList.toggle("open");
+          });
+        });
+        document.querySelectorAll("[data-refresh-comment]").forEach((button) => {
+          button.addEventListener("click", () => refreshComment(button.dataset.refreshComment));
+        });
       }
 
       function commentCard(comment) {
         const owner = comment.isOwnerComment ? " owner" : "";
+        const identity = commenterLabel(comment);
+        const replyPossible = Boolean(comment.commentId);
+        const mediaKnown = Boolean(comment.mediaId);
         return `
           <div class="comment${owner}">
             <div class="line">
               <div>
-                <strong>@${escapeHtml(comment.username || "unknown")}</strong>
+                <strong>${escapeHtml(identity.label)}</strong>
                 <span class="muted">${escapeHtml(formatDate(comment.createdAt || comment.firstSeenAt))}</span>
+                ${comment.userId ? `<span class="muted">User ID: <code>${escapeHtml(comment.userId)}</code></span>` : ""}
               </div>
               <span class="badge ${statusClass(comment.automationStatus)}">${escapeHtml(statusLabel(comment.automationStatus))}</span>
             </div>
             <p class="caption">${escapeHtml(comment.text || "")}</p>
+            <div class="id-grid">
+              <div class="id-row">
+                <span>comment_id</span>
+                <code>${escapeHtml(comment.commentId || "返信不可")}</code>
+              </div>
+              <div class="id-row">
+                <span>media_id</span>
+                <code>${escapeHtml(comment.mediaId || "投稿不明")}</code>
+              </div>
+              <div class="id-row">
+                <span>ユーザー情報</span>
+                <span>${escapeHtml(identity.note)}</span>
+              </div>
+              <div class="id-row">
+                <span>送信可否</span>
+                <span class="${replyPossible && mediaKnown ? "ok" : "bad-text"}">${escapeHtml(sendabilityLabel(comment))}</span>
+              </div>
+            </div>
             <div class="line">
               <span>番号: <span class="choice">${escapeHtml(comment.choice || "-")}</span></span>
-              <span class="muted">${comment.privateReply ? "DM文あり" : ""}</span>
+              <span class="muted">${comment.publicReply ? "公開返信あり" : ""} ${comment.privateReply ? "DM文あり" : ""}</span>
+            </div>
+            <div class="row-actions">
+              <button class="mini" data-copy="${escapeHtml(comment.commentId || "")}">comment_idをコピー</button>
+              <button class="mini" data-copy="${escapeHtml(comment.mediaId || "")}">media_idをコピー</button>
+              <button class="mini" data-toggle-comment="${escapeHtml(comment.commentId || "")}">詳細を表示</button>
+              <button class="mini" data-refresh-comment="${escapeHtml(comment.commentId || "")}" ${comment.commentId ? "" : "disabled"}>このコメントを再取得</button>
+            </div>
+            <div class="comment-detail">
+              <div class="kv">
+                ${row("保存済み公開返信", escapeHtml(comment.publicReply || "なし"))}
+                ${row("保存済みDM本文", escapeHtml(comment.privateReply || "なし"))}
+                ${row("APIエラー", comment.errorMessage ? `<span class="bad-text">${escapeHtml(comment.errorMessage)}</span>` : "なし")}
+                ${row("作成日時", escapeHtml(formatDate(comment.createdAt)))}
+                ${row("初回保存", escapeHtml(formatDate(comment.firstSeenAt)))}
+                ${row("更新日時", escapeHtml(formatDate(comment.updatedAt)))}
+              </div>
             </div>
           </div>
         `;
+      }
+
+      async function refreshComment(commentId) {
+        if (!commentId) return;
+        try {
+          showTest(await post(`/api/comments/${commentId}/refresh`, {}));
+          if (selectedMediaId) await selectMedia(selectedMediaId);
+        } catch (error) {
+          showError(error);
+          if (selectedMediaId) await selectMedia(selectedMediaId);
+        }
       }
 
       function renderEvents(events) {
@@ -850,6 +1086,40 @@
 
       function status(value) {
         return value ? '<span class="ok">設定済み</span>' : '<span class="bad-text">未設定</span>';
+      }
+
+      function publicRepliesFor(reply) {
+        if (Array.isArray(reply?.publicReplies)) {
+          return reply.publicReplies.map((item) => String(item).trim()).filter(Boolean);
+        }
+        return reply?.publicReply ? [String(reply.publicReply).trim()].filter(Boolean) : [];
+      }
+
+      function commenterLabel(comment) {
+        if (comment.username) {
+          return {
+            label: `@${comment.username}`,
+            note: comment.userId ? "username / User ID 取得済み" : "username取得済み"
+          };
+        }
+        if (comment.userId) {
+          return {
+            label: "ユーザーIDのみ取得",
+            note: "username未取得 / User ID取得済み"
+          };
+        }
+        return {
+          label: "ユーザー情報未取得",
+          note: "ユーザー名未取得。ただしcomment_idがあればPrivate Replyは可能"
+        };
+      }
+
+      function sendabilityLabel(comment) {
+        if (!comment.commentId && !comment.mediaId) return "返信不可 / 投稿不明";
+        if (!comment.commentId) return "返信不可";
+        if (!comment.mediaId) return "投稿不明";
+        if (comment.isOwnerComment) return "自分のコメントなので送信対象外";
+        return "comment_idあり。Private Reply可能";
       }
 
       function statusLabel(value) {
@@ -918,6 +1188,10 @@
 
       function setBusy(id, busy) {
         document.getElementById(id).disabled = busy;
+      }
+
+      function cssValue(value) {
+        return window.CSS?.escape ? CSS.escape(value) : String(value).replaceAll('"', '\\"');
       }
 
       function formatDate(value) {

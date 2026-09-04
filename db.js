@@ -141,12 +141,27 @@ async function seedFlows(flows) {
         on conflict (id) do update set
           name = excluded.name,
           marker = excluded.marker,
-          choices = excluded.choices,
           updated_at = now()
       `,
       [flow.id, flow.name, flow.marker, flow.enabled !== false, JSON.stringify(flow.choices)]
     );
   }
+}
+
+export async function updateFlowChoices(flowId, choices) {
+  if (!pool) return null;
+
+  const result = await pool.query(
+    `
+      update automation_flows
+      set choices = $2, updated_at = now()
+      where id = $1
+      returning id, name, marker, enabled, choices
+    `,
+    [flowId, JSON.stringify(choices)]
+  );
+
+  return result.rows[0] ?? null;
 }
 
 export async function getFlows() {
@@ -382,8 +397,8 @@ export async function upsertMediaComment(comment) {
       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, now(), now())
       on conflict (comment_id) do update set
         media_id = excluded.media_id,
-        username = excluded.username,
-        user_id = excluded.user_id,
+        username = coalesce(nullif(excluded.username, ''), media_comments.username),
+        user_id = coalesce(nullif(excluded.user_id, ''), media_comments.user_id),
         comment_text = excluded.comment_text,
         choice = excluded.choice,
         like_count = excluded.like_count,
@@ -458,6 +473,39 @@ export async function getMediaComments(mediaId) {
   return result.rows;
 }
 
+export async function getComment(commentId) {
+  if (!pool) return null;
+
+  const result = await pool.query(
+    `
+      select
+        c.comment_id as "commentId",
+        c.media_id as "mediaId",
+        c.username,
+        c.user_id as "userId",
+        c.comment_text as text,
+        c.choice,
+        c.like_count as "likeCount",
+        c.hidden,
+        c.is_owner_comment as "isOwnerComment",
+        c.automation_status as "automationStatus",
+        c.error_message as "errorMessage",
+        c.created_at as "createdAt",
+        c.first_seen_at as "firstSeenAt",
+        c.updated_at as "updatedAt",
+        p.status as "sendStatus",
+        p.public_reply as "publicReply",
+        p.private_reply as "privateReply"
+      from media_comments c
+      left join processed_comments p on p.comment_id = c.comment_id
+      where c.comment_id = $1
+    `,
+    [commentId]
+  );
+
+  return result.rows[0] ?? null;
+}
+
 export async function hasProcessedComment(commentId) {
   if (!pool) return false;
 
@@ -489,6 +537,10 @@ export async function saveProcessedComment({
       )
       values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
       on conflict (comment_id) do update set
+        username = coalesce(nullif(excluded.username, ''), processed_comments.username),
+        comment_text = excluded.comment_text,
+        public_reply = coalesce(excluded.public_reply, processed_comments.public_reply),
+        private_reply = coalesce(excluded.private_reply, processed_comments.private_reply),
         status = excluded.status,
         error_message = excluded.error_message
     `,
