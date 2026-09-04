@@ -2,7 +2,9 @@ import pg from "pg";
 
 const { Pool } = pg;
 
-const pool = process.env.DATABASE_URL
+let disabledReason = "";
+
+let pool = process.env.DATABASE_URL
   ? new Pool({
       connectionString: process.env.DATABASE_URL,
       ssl: process.env.DATABASE_URL.includes("railway.internal")
@@ -15,41 +17,59 @@ export function hasDatabase() {
   return Boolean(pool);
 }
 
+export function getDatabaseStatus() {
+  return {
+    configured: Boolean(process.env.DATABASE_URL),
+    connected: Boolean(pool),
+    disabledReason
+  };
+}
+
 export async function initDatabase() {
-  if (!pool) return;
+  if (!pool) return false;
 
-  await pool.query(`
-    create table if not exists media_flows (
-      media_id text primary key,
-      marker text,
-      caption text,
-      matched boolean not null default false,
-      checked_at timestamptz not null default now()
-    );
+  try {
+    await pool.query(`
+      create table if not exists media_flows (
+        media_id text primary key,
+        marker text,
+        caption text,
+        matched boolean not null default false,
+        checked_at timestamptz not null default now()
+      );
 
-    create table if not exists processed_comments (
-      comment_id text primary key,
-      media_id text,
-      choice text,
-      username text,
-      comment_text text,
-      created_at timestamptz not null default now()
-    );
+      create table if not exists processed_comments (
+        comment_id text primary key,
+        media_id text,
+        choice text,
+        username text,
+        comment_text text,
+        created_at timestamptz not null default now()
+      );
 
-    create table if not exists events (
-      id bigserial primary key,
-      status text not null,
-      reason text,
-      media_id text,
-      comment_id text,
-      choice text,
-      username text,
-      comment_text text,
-      marker text,
-      message text,
-      created_at timestamptz not null default now()
-    );
-  `);
+      create table if not exists events (
+        id bigserial primary key,
+        status text not null,
+        reason text,
+        media_id text,
+        comment_id text,
+        choice text,
+        username text,
+        comment_text text,
+        marker text,
+        message text,
+        created_at timestamptz not null default now()
+      );
+    `);
+    return true;
+  } catch (error) {
+    disabledReason = error instanceof Error ? error.message : String(error);
+    console.error("Postgres disabled; falling back to memory:", disabledReason);
+
+    await pool.end().catch(() => {});
+    pool = null;
+    return false;
+  }
 }
 
 export async function getStoredMediaFlow(mediaId) {

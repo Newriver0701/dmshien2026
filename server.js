@@ -7,6 +7,7 @@ import {
   getRecentEvents,
   getStats,
   getStoredMediaFlow,
+  getDatabaseStatus,
   hasDatabase,
   hasProcessedComment,
   initDatabase,
@@ -28,6 +29,8 @@ const {
   ACCESS_TOKEN,
   ADMIN_TOKEN,
   DATABASE_URL,
+  APP_ID,
+  APP_SECRET,
   GRAPH_BASE_URL = "https://graph.facebook.com",
   GRAPH_API_VERSION = "v25.0"
 } = process.env;
@@ -100,11 +103,13 @@ app.get("/api/status", requireAdmin, async (_req, res) => {
       ACCESS_TOKEN: Boolean(ACCESS_TOKEN),
       ADMIN_TOKEN: Boolean(ADMIN_TOKEN),
       DATABASE_URL: Boolean(DATABASE_URL),
+      APP_ID: Boolean(APP_ID),
+      APP_SECRET: Boolean(APP_SECRET),
       GRAPH_BASE_URL,
       GRAPH_API_VERSION
     },
     database: {
-      enabled: hasDatabase()
+      ...getDatabaseStatus()
     },
     flows: flows.map((flow) => ({
       marker: flow.marker,
@@ -117,6 +122,56 @@ app.get("/api/status", requireAdmin, async (_req, res) => {
     },
     recentEvents: dbEvents ?? recentEvents
   });
+});
+
+app.post("/api/exchange-token", requireAdmin, async (req, res) => {
+  try {
+    const shortToken = String(req.body?.shortToken ?? "").trim();
+    if (!shortToken) return res.status(400).json({ ok: false, error: "shortToken is required" });
+    if (!APP_ID || !APP_SECRET) {
+      return res.status(400).json({
+        ok: false,
+        error: "APP_ID and APP_SECRET must be set in Railway Variables"
+      });
+    }
+
+    const url = new URL(`${GRAPH_BASE_URL}/${GRAPH_API_VERSION}/oauth/access_token`);
+    url.searchParams.set("grant_type", "fb_exchange_token");
+    url.searchParams.set("client_id", APP_ID);
+    url.searchParams.set("client_secret", APP_SECRET);
+    url.searchParams.set("fb_exchange_token", shortToken);
+
+    const token = await fetchJson(url);
+    res.json({
+      ok: true,
+      longUserToken: token.access_token,
+      tokenType: token.token_type,
+      expiresIn: token.expires_in
+    });
+  } catch (error) {
+    res.status(500).json({ ok: false, error: errorMessage(error) });
+  }
+});
+
+app.post("/api/page-tokens", requireAdmin, async (req, res) => {
+  try {
+    const longUserToken = String(req.body?.longUserToken ?? "").trim();
+    if (!longUserToken) {
+      return res.status(400).json({ ok: false, error: "longUserToken is required" });
+    }
+
+    const url = new URL(`${GRAPH_BASE_URL}/${GRAPH_API_VERSION}/me/accounts`);
+    url.searchParams.set("fields", "name,id,access_token,instagram_business_account");
+    url.searchParams.set("access_token", longUserToken);
+
+    const pages = await fetchJson(url);
+    res.json({
+      ok: true,
+      pages: pages.data ?? []
+    });
+  } catch (error) {
+    res.status(500).json({ ok: false, error: errorMessage(error) });
+  }
 });
 
 app.get("/api/latest-media", requireAdmin, async (req, res) => {
@@ -300,12 +355,15 @@ async function graphRequest(path, options = {}) {
     url.searchParams.set(key, value);
   }
 
-  const response = await fetch(url, {
+  return fetchJson(url, {
     method: options.method ?? "GET",
     headers: options.body ? { "Content-Type": "application/json" } : undefined,
     body: options.body ? JSON.stringify(options.body) : undefined
   });
+}
 
+async function fetchJson(url, options = {}) {
+  const response = await fetch(url, options);
   const json = await response.json().catch(() => ({}));
   if (!response.ok) {
     throw new Error(json?.error?.message ?? `Meta API error: ${response.status}`);
@@ -384,6 +442,9 @@ initDatabase()
     });
   })
   .catch((error) => {
-    console.error("failed to initialize database:", error);
-    process.exit(1);
+    console.error("unexpected startup error:", error);
+    app.listen(Number(PORT), () => {
+      console.log(`listening on port ${PORT}`);
+      console.log("Postgres disabled; using memory only");
+    });
   });

@@ -410,6 +410,7 @@
           <nav class="nav">
             <a href="#overview">全体状況</a>
             <a href="#setup">設定チェック</a>
+            <a href="#tokens">トークン更新</a>
             <a href="#test">動作テスト</a>
             <a href="#posts">最新投稿</a>
             <a href="#events">受信履歴</a>
@@ -438,7 +439,7 @@
             <section class="metric"><span>返信済みコメント</span><strong id="m-processed">0</strong></section>
             <section class="metric"><span>確認済み投稿</span><strong id="m-cached">0</strong></section>
             <section class="metric"><span>受信履歴</span><strong id="m-events">0</strong></section>
-            <section class="metric"><span>登録マーカー</span><strong id="m-flows">0</strong></section>
+            <section class="metric"><span>Postgres</span><strong id="m-db">確認中</strong></section>
           </div>
 
           <div class="layout">
@@ -449,6 +450,30 @@
                 </div>
                 <p class="hint">Railwayに必要な値が入っているかを確認します。赤い項目がある時はVariablesを見直してください。</p>
                 <div class="kv" id="env"></div>
+              </section>
+
+              <section class="panel" id="tokens">
+                <div class="section-head">
+                  <h2>トークン更新</h2>
+                </div>
+                <p class="hint">Graph API Explorerで作った短期User Tokenを貼ると、長期User Tokenに交換して、Page Access TokenとInstagram IDを取得できます。</p>
+
+                <div class="field">
+                  <label for="short-token">短期User Token</label>
+                  <input id="short-token" placeholder="Graph API Explorerで作ったUser Token" />
+                </div>
+
+                <div class="field">
+                  <label for="long-token">長期User Token</label>
+                  <input id="long-token" placeholder="交換後にここへ入ります" />
+                </div>
+
+                <div class="button-row">
+                  <button class="primary" id="exchange-token">長期Tokenに交換</button>
+                  <button id="load-page-tokens">Page Tokenを取得</button>
+                </div>
+
+                <div class="result" id="token-result">まだ実行していません。</div>
               </section>
 
               <section class="panel" id="test">
@@ -523,6 +548,8 @@
       document.getElementById("test-media").addEventListener("click", testMedia);
       document.getElementById("dry-run").addEventListener("click", dryRunComment);
       document.getElementById("copy-webhook").addEventListener("click", copyWebhookUrl);
+      document.getElementById("exchange-token").addEventListener("click", exchangeToken);
+      document.getElementById("load-page-tokens").addEventListener("click", loadPageTokens);
 
       loadStatus().catch(showError);
       setInterval(() => loadStatus().catch(showError), 10000);
@@ -533,11 +560,18 @@
         document.getElementById("m-processed").textContent = data.stats.processedComments;
         document.getElementById("m-cached").textContent = data.stats.cachedMedia;
         document.getElementById("m-events").textContent = data.stats.recentEvents;
-        document.getElementById("m-flows").textContent = data.flows.length;
+        document.getElementById("m-db").textContent = data.database.connected
+          ? "接続中"
+          : data.database.configured
+            ? "未接続"
+            : "未設定";
 
-        document.getElementById("env").innerHTML = Object.entries(data.env)
-          .map(([key, value]) => row(labelForEnv(key), typeof value === "boolean" ? status(value) : escapeHtml(value)))
-          .join("");
+        const envRows = Object.entries(data.env)
+          .map(([key, value]) => row(labelForEnv(key), typeof value === "boolean" ? status(value) : escapeHtml(value)));
+        if (data.database.disabledReason) {
+          envRows.push(row("Postgresエラー", `<span class="bad">${escapeHtml(data.database.disabledReason)}</span>`));
+        }
+        document.getElementById("env").innerHTML = envRows.join("");
 
         renderEvents(data.recentEvents);
       }
@@ -585,6 +619,35 @@
           showError(error);
         } finally {
           setBusy("dry-run", false);
+        }
+      }
+
+      async function exchangeToken() {
+        setBusy("exchange-token", true);
+        try {
+          const shortToken = document.getElementById("short-token").value;
+          const data = await post("/api/exchange-token", { shortToken });
+          if (data.longUserToken) {
+            document.getElementById("long-token").value = data.longUserToken;
+          }
+          showTokenResult(data);
+        } catch (error) {
+          showTokenError(error);
+        } finally {
+          setBusy("exchange-token", false);
+        }
+      }
+
+      async function loadPageTokens() {
+        setBusy("load-page-tokens", true);
+        try {
+          const longUserToken = document.getElementById("long-token").value;
+          const data = await post("/api/page-tokens", { longUserToken });
+          showTokenResult(data);
+        } catch (error) {
+          showTokenError(error);
+        } finally {
+          setBusy("load-page-tokens", false);
         }
       }
 
@@ -655,8 +718,16 @@
         document.getElementById("test-result").textContent = JSON.stringify(data, null, 2);
       }
 
+      function showTokenResult(data) {
+        document.getElementById("token-result").textContent = JSON.stringify(data, null, 2);
+      }
+
       function showError(error) {
         showResult({ ok: false, error: error instanceof Error ? error.message : String(error) });
+      }
+
+      function showTokenError(error) {
+        showTokenResult({ ok: false, error: error instanceof Error ? error.message : String(error) });
       }
 
       function row(label, value) {
@@ -692,6 +763,8 @@
           ACCESS_TOKEN: "Metaアクセストークン",
           ADMIN_TOKEN: "管理画面トークン",
           DATABASE_URL: "Postgres接続",
+          APP_ID: "MetaアプリID",
+          APP_SECRET: "Metaアプリシークレット",
           GRAPH_BASE_URL: "API接続先",
           GRAPH_API_VERSION: "APIバージョン"
         }[key] || key;

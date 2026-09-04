@@ -23,6 +23,8 @@ IG_USER_ID=InstagramプロアカウントID
 ACCESS_TOKEN=Metaのアクセストークン
 ADMIN_TOKEN=管理画面用の好きな長い文字列
 DATABASE_URL=Railway Postgresを追加すると自動で入ります
+APP_ID=MetaアプリID
+APP_SECRET=Metaアプリシークレット
 GRAPH_BASE_URL=https://graph.facebook.com
 GRAPH_API_VERSION=v25.0
 ```
@@ -57,9 +59,30 @@ https://YOUR-RAILWAY-DOMAIN.up.railway.app/admin?token=ADMIN_TOKENの値
 - 最新投稿の取得
 - 投稿ごとのキャプション目印チェック
 - コメント文の疑似判定
+- 短期User TokenからPage Access Tokenを取得
 - 受信したコメント、無視した理由、送信結果、エラー
 
 `ADMIN_TOKEN` を入れていない場合は `/admin` だけで開けますが、外から見えるURLなので設定するのがおすすめです。
+
+## トークン更新
+
+管理画面の「トークン更新」で以下ができます。
+
+1. Graph API Explorerで短期User Tokenを作る
+2. 管理画面に貼る
+3. 「長期Tokenに交換」を押す
+4. 「Page Tokenを取得」を押す
+5. 返ってきた `pages[].access_token` をRailwayの `ACCESS_TOKEN` に入れる
+6. 返ってきた `pages[].instagram_business_account.id` をRailwayの `IG_USER_ID` に入れる
+
+この機能を使うには、Railway Variablesに以下も入れてください。
+
+```text
+APP_ID=MetaアプリID
+APP_SECRET=Metaアプリシークレット
+```
+
+トークンは画面に表示するだけで、Postgresには保存しません。
 
 ## Postgres連携
 
