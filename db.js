@@ -598,17 +598,85 @@ export async function getRecentEvents(limit = 100) {
   return result.rows;
 }
 
+export async function getWebhookTodaySummary(limit = 20) {
+  if (!pool) return null;
+
+  const result = await pool.query(
+    `
+      select
+        e.media_id as "mediaId",
+        count(*)::int as count,
+        max(e.created_at) as "lastReceivedAt",
+        p.caption,
+        p.media_type as "mediaType",
+        p.media_product_type as "mediaProductType",
+        p.media_url as "mediaUrl",
+        p.thumbnail_url as "thumbnailUrl",
+        p.permalink,
+        p.active,
+        p.matched_marker as "matchedMarker",
+        f.name as "flowName"
+      from events e
+      left join media_posts p on p.media_id = e.media_id
+      left join media_flow_links l on l.media_id = e.media_id
+      left join automation_flows f on f.id = l.flow_id
+      where
+        e.status = 'received'
+        and (e.created_at at time zone 'Asia/Tokyo')::date = (now() at time zone 'Asia/Tokyo')::date
+        and coalesce(e.reason, '') <> 'user_info_missing'
+      group by
+        e.media_id,
+        p.caption,
+        p.media_type,
+        p.media_product_type,
+        p.media_url,
+        p.thumbnail_url,
+        p.permalink,
+        p.active,
+        p.matched_marker,
+        f.name
+      order by max(e.created_at) desc
+      limit $1
+    `,
+    [limit]
+  );
+
+  return result.rows;
+}
+
 export async function getStats() {
   if (!pool) return null;
 
-  const [flows, posts, processed, errors, events] = await Promise.all([
+  const [flows, posts, processed, errors, webhook, events] = await Promise.all([
     pool.query("select count(*)::int as count from automation_flows where enabled = true"),
     pool.query("select count(*)::int as count from media_posts where active = true"),
     pool.query(
-      "select count(*)::int as count from processed_comments where status = 'sent' and created_at >= current_date"
+      `
+        select count(*)::int as count
+        from processed_comments
+        where
+          status = 'sent'
+          and (created_at at time zone 'Asia/Tokyo')::date = (now() at time zone 'Asia/Tokyo')::date
+      `
     ),
     pool.query(
-      "select count(*)::int as count from events where status = 'error' and created_at >= current_date"
+      `
+        select count(*)::int as count
+        from events
+        where
+          status = 'error'
+          and (created_at at time zone 'Asia/Tokyo')::date = (now() at time zone 'Asia/Tokyo')::date
+      `
+    ),
+    pool.query(
+      `
+        select count(*)::int as count
+        from events
+        where
+          status = 'received'
+          and (created_at at time zone 'Asia/Tokyo')::date = (now() at time zone 'Asia/Tokyo')::date
+          and coalesce(reason, '') <> 'user_info_missing'
+      `
     ),
     pool.query("select count(*)::int as count from events")
   ]);
@@ -618,6 +686,7 @@ export async function getStats() {
     activePosts: posts.rows[0].count,
     sentToday: processed.rows[0].count,
     errorsToday: errors.rows[0].count,
+    webhookToday: webhook.rows[0].count,
     recentEvents: events.rows[0].count
   };
 }

@@ -13,6 +13,7 @@ import {
   getMediaPosts,
   getRecentEvents,
   getStats,
+  getWebhookTodaySummary,
   getDatabaseStatus,
   hasDatabase,
   hasProcessedComment,
@@ -49,6 +50,8 @@ const {
 const processedComments = new Set();
 const recentEvents = [];
 const mediaFlowCache = new Map();
+const COMMENT_FIELDS = "id,text,username,timestamp,like_count,hidden,from";
+const COMMENT_FIELDS_DETAILED = "id,text,username,timestamp,like_count,hidden,from{id,username}";
 
 app.get("/", (_req, res) => {
   res.redirect("/admin");
@@ -105,6 +108,8 @@ app.get("/admin", requireAdmin, async (_req, res) => {
 app.get("/api/status", requireAdmin, async (_req, res) => {
   const dbStats = await getStats();
   const dbEvents = await getRecentEvents(100);
+  const dbWebhookToday = await getWebhookTodaySummary(20);
+  const memoryWebhookToday = getMemoryWebhookTodaySummary();
 
   res.json({
     ok: true,
@@ -129,8 +134,10 @@ app.get("/api/status", requireAdmin, async (_req, res) => {
       activePosts: mediaFlowCache.size,
       sentToday: processedComments.size,
       errorsToday: recentEvents.filter((event) => event.status === "error").length,
+      webhookToday: memoryWebhookToday.reduce((total, item) => total + item.count, 0),
       recentEvents: recentEvents.length
     },
+    webhookTodayByMedia: dbWebhookToday ?? memoryWebhookToday,
     recentEvents: dbEvents ?? recentEvents
   });
 });
@@ -301,7 +308,19 @@ app.get("/api/media/:mediaId/comments/raw", requireAdmin, async (req, res) => {
   try {
     const limit = Math.min(Number(req.query.limit ?? 50), 50);
     const raw = await getMediaCommentsRaw(req.params.mediaId, limit);
-    res.json({ ok: true, raw });
+    const data = raw.data ?? [];
+    const missingIdentityCount = data.filter((comment) => !comment.username && !comment.from).length;
+    res.json({
+      ok: true,
+      fields: raw._requestedFields ?? COMMENT_FIELDS,
+      count: data.length,
+      missingIdentityCount,
+      identityNote:
+        missingIdentityCount > 0
+          ? "Meta API response did not include username/from for some comments. comment_id can still be used for Private Reply."
+          : "username/from was included for returned comments.",
+      raw: redactAccessTokens(raw)
+    });
   } catch (error) {
     res.status(500).json({ ok: false, error: errorMessage(error) });
   }
@@ -619,16 +638,39 @@ async function getMediaCommentsFromInstagram(mediaId, limit) {
 }
 
 async function getMediaCommentsRaw(mediaId, limit) {
-  return graphRequest(`/${mediaId}/comments`, {
-    fields: "id,text,username,timestamp,like_count,hidden,from",
-    query: { limit: String(limit) }
-  });
+  try {
+    const raw = await graphRequest(`/${mediaId}/comments`, {
+      fields: COMMENT_FIELDS_DETAILED,
+      query: { limit: String(limit) }
+    });
+    raw._requestedFields = COMMENT_FIELDS_DETAILED;
+    return raw;
+  } catch (error) {
+    const raw = await graphRequest(`/${mediaId}/comments`, {
+      fields: COMMENT_FIELDS,
+      query: { limit: String(limit) }
+    });
+    raw._requestedFields = COMMENT_FIELDS;
+    raw._fieldFallbackReason = errorMessage(error);
+    return raw;
+  }
 }
 
 async function getCommentFromInstagram(commentId) {
-  return graphRequest(`/${commentId}`, {
-    fields: "id,text,username,timestamp,like_count,hidden,from,media"
-  });
+  try {
+    const raw = await graphRequest(`/${commentId}`, {
+      fields: `${COMMENT_FIELDS_DETAILED},media`
+    });
+    raw._requestedFields = `${COMMENT_FIELDS_DETAILED},media`;
+    return raw;
+  } catch (error) {
+    const raw = await graphRequest(`/${commentId}`, {
+      fields: `${COMMENT_FIELDS},media`
+    });
+    raw._requestedFields = `${COMMENT_FIELDS},media`;
+    raw._fieldFallbackReason = errorMessage(error);
+    return raw;
+  }
 }
 
 async function replyToComment(commentId, message) {
@@ -692,6 +734,22 @@ function normalizeComment(comment) {
   };
 }
 
+function redactAccessTokens(value) {
+  if (Array.isArray(value)) return value.map(redactAccessTokens);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, item]) => [
+        key,
+        key.toLowerCase().includes("token") ? "[REDACTED]" : redactAccessTokens(item)
+      ])
+    );
+  }
+  if (typeof value === "string") {
+    return value.replace(/([?&]access_token=)[^&\s)]+/g, "$1[REDACTED]");
+  }
+  return value;
+}
+
 function normalizeFlow(flow) {
   if (!flow) return null;
   return {
@@ -729,6 +787,39 @@ function localFlows() {
     choices: normalizeChoices(flow.choices),
     linkedMediaCount: 0
   }));
+}
+
+function getMemoryWebhookTodaySummary() {
+  const today = new Date().toISOString().slice(0, 10);
+  const grouped = new Map();
+
+  for (const event of recentEvents) {
+    if (event.status !== "received") continue;
+    if (event.reason === "user_info_missing") continue;
+    if (!event.at?.startsWith(today)) continue;
+
+    const mediaId = event.mediaId ?? "unknown";
+    const item = grouped.get(mediaId) ?? {
+      mediaId,
+      count: 0,
+      lastReceivedAt: event.at,
+      caption: "",
+      mediaType: "",
+      mediaProductType: "",
+      mediaUrl: "",
+      thumbnailUrl: "",
+      permalink: "",
+      active: false,
+      matchedMarker: null,
+      flowName: null
+    };
+
+    item.count += 1;
+    if (event.at > item.lastReceivedAt) item.lastReceivedAt = event.at;
+    grouped.set(mediaId, item);
+  }
+
+  return [...grouped.values()].sort((a, b) => String(b.lastReceivedAt).localeCompare(String(a.lastReceivedAt)));
 }
 
 initDatabase(flows)

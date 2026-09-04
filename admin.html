@@ -201,7 +201,7 @@
 
       .metrics {
         display: grid;
-        grid-template-columns: repeat(5, 1fr);
+        grid-template-columns: repeat(6, 1fr);
         gap: 10px;
       }
 
@@ -252,18 +252,35 @@
 
       .flow-list,
       .media-list,
-      .comment-list {
+      .comment-list,
+      .webhook-list {
         display: grid;
         gap: 10px;
       }
 
       .flow,
       .media,
-      .comment {
+      .comment,
+      .webhook-item {
         border: 1px solid #e5e9f0;
         border-radius: 8px;
         background: #fff;
         padding: 12px;
+      }
+
+      .webhook-item {
+        display: grid;
+        grid-template-columns: 72px 1fr;
+        gap: 10px;
+        cursor: pointer;
+      }
+
+      .webhook-thumb {
+        width: 72px;
+        aspect-ratio: 1 / 1;
+        object-fit: cover;
+        border-radius: 7px;
+        background: #edf1f5;
       }
 
       .media {
@@ -521,10 +538,19 @@
           <div class="metrics">
             <section class="metric"><span>稼働中フロー</span><strong id="m-flows">0</strong></section>
             <section class="metric"><span>対象リール</span><strong id="m-posts">0</strong></section>
+            <section class="metric"><span>今日のWebhook受信</span><strong id="m-webhook">0</strong></section>
             <section class="metric"><span>今日のDM送信</span><strong id="m-sent">0</strong></section>
             <section class="metric"><span>今日のエラー</span><strong id="m-errors">0</strong></section>
             <section class="metric"><span>Postgres</span><strong id="m-db">確認中</strong></section>
           </div>
+
+          <section class="panel" id="webhooks-today">
+            <div class="head">
+              <h2>今日Webhookで受けたコメント</h2>
+              <span class="muted">投稿別</span>
+            </div>
+            <div class="webhook-list" id="webhook-today-list"></div>
+          </section>
 
           <div class="grid">
             <div class="stack">
@@ -673,6 +699,7 @@
         document.getElementById("updated").textContent = `最終更新: ${new Date().toLocaleString()}`;
         document.getElementById("m-flows").textContent = data.stats.activeFlows ?? 0;
         document.getElementById("m-posts").textContent = data.stats.activePosts ?? 0;
+        document.getElementById("m-webhook").textContent = data.stats.webhookToday ?? 0;
         document.getElementById("m-sent").textContent = data.stats.sentToday ?? 0;
         document.getElementById("m-errors").textContent = data.stats.errorsToday ?? 0;
         document.getElementById("m-db").textContent = data.database.connected
@@ -688,6 +715,7 @@
           envRows.push(row("Postgresエラー", `<span class="bad-text">${escapeHtml(data.database.disabledReason)}</span>`));
         }
         document.getElementById("env").innerHTML = envRows.join("");
+        renderWebhookToday(data.webhookTodayByMedia ?? []);
         renderEvents(data.recentEvents ?? []);
       }
 
@@ -725,6 +753,7 @@
       }
 
       async function selectMedia(mediaId) {
+        if (!mediaId || mediaId === "unknown") return;
         selectedMediaId = mediaId;
         document.getElementById("media-id").value = mediaId;
         document.querySelectorAll(".media").forEach((el) => {
@@ -763,7 +792,7 @@
         setBusy("raw-comments", true);
         try {
           const data = await request(`/api/media/${selectedMediaId}/comments/raw`);
-          lastRawJson = JSON.stringify(data.raw ?? data, null, 2);
+          lastRawJson = JSON.stringify(data, null, 2);
           document.getElementById("raw-result").textContent = lastRawJson;
           document.getElementById("raw-box").classList.add("open");
         } catch (error) {
@@ -951,6 +980,38 @@
               <p><code>${escapeHtml(item.mediaId)}</code></p>
               <p class="muted">コメント ${item.commentsCount ?? "-"} / いいね ${item.likeCount ?? "-"}</p>
               <p class="caption">${escapeHtml(item.caption || "キャプションなし")}</p>
+            </div>
+          </div>
+        `;
+      }
+
+      function renderWebhookToday(items) {
+        const target = document.getElementById("webhook-today-list");
+        target.innerHTML =
+          items.map(webhookTodayCard).join("") ||
+          `<p class="muted">今日はまだWebhookで受けたコメントがありません。</p>`;
+        target.querySelectorAll("[data-webhook-media-id]").forEach((el) => {
+          el.addEventListener("click", () => selectMedia(el.dataset.webhookMediaId));
+        });
+      }
+
+      function webhookTodayCard(item) {
+        const image = item.thumbnailUrl || item.mediaUrl || "";
+        const mediaId = item.mediaId || "";
+        return `
+          <div class="webhook-item" data-webhook-media-id="${escapeHtml(mediaId)}">
+            ${image ? `<img class="webhook-thumb" src="${escapeHtml(image)}" alt="">` : `<div class="webhook-thumb"></div>`}
+            <div>
+              <div class="line">
+                <div>
+                  <strong>${escapeHtml(item.flowName || item.mediaProductType || item.mediaType || "投稿情報未取得")}</strong>
+                  <p class="muted">最終受信: ${escapeHtml(formatDate(item.lastReceivedAt))}</p>
+                </div>
+                <span class="badge ${item.active ? "good" : ""}">${item.count ?? 0}件</span>
+              </div>
+              <p><code>${escapeHtml(mediaId || "media_idなし")}</code></p>
+              <p class="muted">${item.active ? "対象リール" : "対象外/未判定"} ${item.matchedMarker ? `/ ${escapeHtml(item.matchedMarker)}` : ""}</p>
+              <p class="caption">${escapeHtml(item.caption || "キャプション未取得。Webhook受信後の投稿取得に失敗している可能性があります。")}</p>
             </div>
           </div>
         `;

@@ -45,7 +45,7 @@ https://YOUR-RAILWAY-DOMAIN.up.railway.app/webhook
 
 6. 管理画面で「Instagramから同期」を押す
 7. 対象リールをクリックしてコメント一覧を確認する
-8. そのリールに `1` / `2` / `3` / `1番` / `２番` などでコメントすると返信します。
+8. そのリールに `1` / `2` / `3` / `1番` / `２番` / `①` / `②` / `③` などでコメントすると返信します。
 
 ## 管理画面
 
@@ -72,6 +72,8 @@ https://YOUR-RAILWAY-DOMAIN.up.railway.app/admin?token=ADMIN_TOKENの値
 - 自動化フロー一覧
 - 1/2/3ごとの公開返信バリエーション編集
 - 今日のDM送信数とエラー数
+- 今日Webhookで受けたコメント数
+- 今日Webhookで受けたコメントの投稿別サマリー
 - 短期User TokenからPage Access Tokenを取得
 - 受信したコメント、無視した理由、送信結果、エラー
 

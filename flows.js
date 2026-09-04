@@ -65,6 +65,9 @@ export function normalizePublicReplies(reply = {}) {
 export function parseChoice(text = "") {
   const normalized = text
     .replace(/[１２３]/g, (char) => String("１２３".indexOf(char) + 1))
+    .replace(/[①➀❶]/g, "1")
+    .replace(/[②➁❷]/g, "2")
+    .replace(/[③➂❸]/g, "3")
     .trim()
     .toLowerCase();
 
