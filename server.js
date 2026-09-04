@@ -3,6 +3,17 @@ import express from "express";
 import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  getRecentEvents,
+  getStats,
+  getStoredMediaFlow,
+  hasDatabase,
+  hasProcessedComment,
+  initDatabase,
+  saveEvent,
+  saveMediaFlow,
+  saveProcessedComment
+} from "./db.js";
 import { findFlow, flows, parseChoice } from "./flows.js";
 
 const app = express();
@@ -16,6 +27,7 @@ const {
   IG_USER_ID,
   ACCESS_TOKEN,
   ADMIN_TOKEN,
+  DATABASE_URL,
   GRAPH_BASE_URL = "https://graph.facebook.com",
   GRAPH_API_VERSION = "v25.0"
 } = process.env;
@@ -76,7 +88,10 @@ app.get("/admin", requireAdmin, async (_req, res) => {
   res.type("html").send(html);
 });
 
-app.get("/api/status", requireAdmin, (_req, res) => {
+app.get("/api/status", requireAdmin, async (_req, res) => {
+  const dbStats = await getStats();
+  const dbEvents = await getRecentEvents(100);
+
   res.json({
     ok: true,
     env: {
@@ -84,19 +99,23 @@ app.get("/api/status", requireAdmin, (_req, res) => {
       IG_USER_ID: Boolean(IG_USER_ID),
       ACCESS_TOKEN: Boolean(ACCESS_TOKEN),
       ADMIN_TOKEN: Boolean(ADMIN_TOKEN),
+      DATABASE_URL: Boolean(DATABASE_URL),
       GRAPH_BASE_URL,
       GRAPH_API_VERSION
+    },
+    database: {
+      enabled: hasDatabase()
     },
     flows: flows.map((flow) => ({
       marker: flow.marker,
       choices: Object.keys(flow.choices)
     })),
-    stats: {
+    stats: dbStats ?? {
       processedComments: processedComments.size,
       cachedMedia: mediaFlowCache.size,
       recentEvents: recentEvents.length
     },
-    recentEvents
+    recentEvents: dbEvents ?? recentEvents
   });
 });
 
@@ -207,7 +226,7 @@ async function handleComment(comment) {
     addEvent({ status: "ignored", reason: "missing_id_or_choice", commentId, mediaId, choice });
     return;
   }
-  if (processedComments.has(commentId)) {
+  if (processedComments.has(commentId) || (await hasProcessedComment(commentId))) {
     addEvent({ status: "ignored", reason: "already_processed", commentId, mediaId, choice });
     return;
   }
@@ -234,6 +253,13 @@ async function handleComment(comment) {
   }
 
   processedComments.add(commentId);
+  await saveProcessedComment({
+    commentId,
+    mediaId,
+    choice,
+    username,
+    text: comment?.text ?? ""
+  });
   addEvent({ status: "sent", commentId, mediaId, choice, marker: flow.marker });
   console.log(`sent reply: media=${mediaId} comment=${commentId} choice=${choice}`);
 }
@@ -243,9 +269,22 @@ async function getFlowForMedia(mediaId) {
     return mediaFlowCache.get(mediaId);
   }
 
+  const stored = await getStoredMediaFlow(mediaId);
+  if (stored) {
+    const storedFlow = stored.matched ? flows.find((flow) => flow.marker === stored.marker) ?? null : null;
+    mediaFlowCache.set(mediaId, storedFlow);
+    return storedFlow;
+  }
+
   const caption = await getMediaCaption(mediaId);
   const flow = findFlow(caption) ?? null;
   mediaFlowCache.set(mediaId, flow);
+  await saveMediaFlow({
+    mediaId,
+    marker: flow?.marker ?? null,
+    caption,
+    matched: Boolean(flow)
+  });
   return flow;
 }
 
@@ -318,9 +357,14 @@ function requireAdmin(req, res, next) {
 }
 
 function addEvent(event) {
-  recentEvents.unshift({
+  const fullEvent = {
     at: new Date().toISOString(),
     ...event
+  };
+
+  recentEvents.unshift(fullEvent);
+  saveEvent(fullEvent).catch((error) => {
+    console.error("failed to save event:", error);
   });
 
   if (recentEvents.length > 100) {
@@ -332,6 +376,14 @@ function errorMessage(error) {
   return error instanceof Error ? error.message : String(error);
 }
 
-app.listen(Number(PORT), () => {
-  console.log(`listening on port ${PORT}`);
-});
+initDatabase()
+  .then(() => {
+    app.listen(Number(PORT), () => {
+      console.log(`listening on port ${PORT}`);
+      console.log(hasDatabase() ? "Postgres connected" : "Postgres disabled; using memory only");
+    });
+  })
+  .catch((error) => {
+    console.error("failed to initialize database:", error);
+    process.exit(1);
+  });

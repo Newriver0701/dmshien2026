@@ -22,6 +22,7 @@ VERIFY_TOKEN=自分で決めた文字列
 IG_USER_ID=InstagramプロアカウントID
 ACCESS_TOKEN=Metaのアクセストークン
 ADMIN_TOKEN=管理画面用の好きな長い文字列
+DATABASE_URL=Railway Postgresを追加すると自動で入ります
 GRAPH_BASE_URL=https://graph.facebook.com
 GRAPH_API_VERSION=v25.0
 ```
@@ -59,6 +60,28 @@ https://YOUR-RAILWAY-DOMAIN.up.railway.app/admin?token=ADMIN_TOKENの値
 - 受信したコメント、無視した理由、送信結果、エラー
 
 `ADMIN_TOKEN` を入れていない場合は `/admin` だけで開けますが、外から見えるURLなので設定するのがおすすめです。
+
+## Postgres連携
+
+RailwayでPostgresを追加すると、`DATABASE_URL` が自動で使えるようになります。
+
+```text
+Railway Project
+↓
+New
+↓
+Database
+↓
+Add PostgreSQL
+```
+
+`DATABASE_URL` がある場合は、以下をPostgresに保存します。
+
+- どの投稿media_idが対象マーカー付きか
+- 返信済みのcomment_id
+- 受信、無視、送信、エラーの履歴
+
+`DATABASE_URL` がない場合もアプリは動きますが、Railwayの再起動で履歴と返信済み情報は消えます。
 
 ## プライバシーポリシー
 

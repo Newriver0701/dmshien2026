@@ -3,13 +3,21 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Instagram Tarot Auto</title>
+    <title>リールDM自動返信</title>
     <style>
       :root {
         color-scheme: light;
         font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-        background: #f5f6f8;
-        color: #171a1f;
+        background: #f4f6f8;
+        color: #17202a;
+        --border: #d9e0e8;
+        --soft: #eef3f7;
+        --muted: #667085;
+        --ink: #17202a;
+        --blue: #2563eb;
+        --green: #15803d;
+        --red: #b42318;
+        --amber: #b45309;
       }
 
       * {
@@ -20,17 +28,88 @@
         margin: 0;
       }
 
-      main {
-        width: min(1180px, calc(100% - 32px));
-        margin: 28px auto 48px;
+      button,
+      input {
+        font: inherit;
       }
 
-      header {
+      button {
+        min-height: 40px;
+        border: 1px solid #c8d1dc;
+        background: #ffffff;
+        color: #1f2937;
+        border-radius: 7px;
+        padding: 9px 14px;
+        cursor: pointer;
+      }
+
+      button.primary {
+        border-color: var(--blue);
+        background: var(--blue);
+        color: #ffffff;
+      }
+
+      button:disabled {
+        cursor: progress;
+        opacity: 0.65;
+      }
+
+      input {
+        width: 100%;
+        min-height: 42px;
+        border: 1px solid #c8d1dc;
+        border-radius: 7px;
+        padding: 9px 12px;
+        background: #ffffff;
+        color: var(--ink);
+      }
+
+      a {
+        color: #2458c5;
+      }
+
+      main {
+        width: min(1180px, calc(100% - 32px));
+        margin: 24px auto 48px;
+      }
+
+      .app-shell {
         display: grid;
-        grid-template-columns: 1fr auto;
-        gap: 18px;
-        align-items: end;
-        margin-bottom: 20px;
+        grid-template-columns: 248px 1fr;
+        gap: 16px;
+      }
+
+      aside,
+      section,
+      .hero {
+        background: #ffffff;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+      }
+
+      aside {
+        padding: 16px;
+        align-self: start;
+        position: sticky;
+        top: 16px;
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 18px;
+      }
+
+      .mark {
+        display: grid;
+        place-items: center;
+        width: 38px;
+        height: 38px;
+        border-radius: 8px;
+        background: #17202a;
+        color: #ffffff;
+        font-weight: 800;
       }
 
       h1,
@@ -41,8 +120,8 @@
       }
 
       h1 {
-        font-size: 28px;
-        line-height: 1.2;
+        font-size: 24px;
+        line-height: 1.25;
       }
 
       h2 {
@@ -53,55 +132,49 @@
         font-size: 14px;
       }
 
-      button,
-      input {
-        font: inherit;
+      .nav {
+        display: grid;
+        gap: 6px;
       }
 
-      button {
-        min-height: 38px;
-        border: 1px solid #c9d1dd;
-        background: #ffffff;
-        color: #1f2937;
-        border-radius: 6px;
-        padding: 9px 13px;
-        cursor: pointer;
+      .nav a {
+        color: #344054;
+        text-decoration: none;
+        padding: 9px 10px;
+        border-radius: 7px;
       }
 
-      button.primary {
-        border-color: #2663eb;
-        background: #2663eb;
-        color: white;
+      .nav a:hover {
+        background: var(--soft);
       }
 
-      button:disabled {
-        cursor: progress;
-        opacity: 0.65;
+      .side-note {
+        margin-top: 18px;
+        padding-top: 14px;
+        border-top: 1px solid #edf1f5;
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.55;
       }
 
-      input {
-        width: 100%;
-        min-height: 38px;
-        border: 1px solid #c9d1dd;
-        border-radius: 6px;
-        padding: 9px 11px;
-        background: white;
-        color: #171a1f;
+      .content {
+        display: grid;
+        gap: 14px;
       }
 
-      section {
-        background: #ffffff;
-        border: 1px solid #dce1e8;
-        border-radius: 8px;
+      .hero {
+        padding: 20px;
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 18px;
+        align-items: end;
       }
 
-      a {
-        color: #2458c5;
-      }
-
-      .topline {
-        color: #667085;
-        margin-top: 5px;
+      .lead {
+        margin-top: 7px;
+        color: #475467;
+        line-height: 1.65;
+        max-width: 740px;
       }
 
       .actions {
@@ -115,7 +188,6 @@
         display: grid;
         grid-template-columns: repeat(4, 1fr);
         gap: 12px;
-        margin-bottom: 14px;
       }
 
       .metric {
@@ -124,7 +196,7 @@
 
       .metric span {
         display: block;
-        color: #667085;
+        color: var(--muted);
         font-size: 13px;
         margin-bottom: 8px;
       }
@@ -156,6 +228,14 @@
         margin-bottom: 14px;
       }
 
+      .hint {
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.55;
+        margin-top: -5px;
+        margin-bottom: 14px;
+      }
+
       .field {
         display: grid;
         gap: 6px;
@@ -176,14 +256,14 @@
       .result {
         margin-top: 12px;
         padding: 12px;
-        background: #f6f8fb;
+        background: #f7fafc;
         border: 1px solid #e5e9f0;
-        border-radius: 6px;
+        border-radius: 7px;
         white-space: pre-wrap;
         word-break: break-word;
         font-size: 13px;
         color: #344054;
-        max-height: 260px;
+        max-height: 280px;
         overflow: auto;
       }
 
@@ -206,17 +286,17 @@
       }
 
       .ok {
-        color: #107c41;
+        color: var(--green);
         font-weight: 700;
       }
 
       .bad {
-        color: #b42318;
+        color: var(--red);
         font-weight: 700;
       }
 
       .muted {
-        color: #667085;
+        color: var(--muted);
       }
 
       .media-list {
@@ -240,15 +320,32 @@
         display: flex;
         justify-content: space-between;
         gap: 12px;
-        margin-bottom: 7px;
+        margin-bottom: 8px;
       }
 
       .caption {
         color: #475467;
-        line-height: 1.5;
-        max-height: 64px;
+        line-height: 1.55;
+        max-height: 72px;
         overflow: hidden;
         margin-top: 8px;
+      }
+
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        min-height: 24px;
+        padding: 3px 8px;
+        border-radius: 999px;
+        background: #eef2f7;
+        color: #344054;
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      .badge.good {
+        background: #e7f6ec;
+        color: var(--green);
       }
 
       table {
@@ -266,7 +363,7 @@
       }
 
       th {
-        color: #667085;
+        color: var(--muted);
         font-weight: 600;
       }
 
@@ -276,11 +373,16 @@
         padding: 2px 5px;
       }
 
-      @media (max-width: 920px) {
-        header,
+      @media (max-width: 960px) {
+        .app-shell,
+        .hero,
         .layout,
         .summary {
           grid-template-columns: 1fr;
+        }
+
+        aside {
+          position: static;
         }
 
         .actions {
@@ -296,86 +398,116 @@
   </head>
   <body>
     <main>
-      <header>
-        <div>
-          <h1>Instagram Tarot Auto</h1>
-          <p class="topline" id="updated">Loading...</p>
-        </div>
-        <div class="actions">
-          <button id="copy-webhook">Copy Webhook URL</button>
-          <button id="refresh">Refresh</button>
-        </div>
-      </header>
-
-      <div class="summary">
-        <section class="metric"><span>Processed</span><strong id="m-processed">0</strong></section>
-        <section class="metric"><span>Cached Media</span><strong id="m-cached">0</strong></section>
-        <section class="metric"><span>Events</span><strong id="m-events">0</strong></section>
-        <section class="metric"><span>Flow Markers</span><strong id="m-flows">0</strong></section>
-      </div>
-
-      <div class="layout">
-        <div class="stack">
-          <section class="panel">
-            <div class="section-head">
-              <h2>Setup</h2>
+      <div class="app-shell">
+        <aside>
+          <div class="brand">
+            <div class="mark">DM</div>
+            <div>
+              <h3>リールDM自動返信</h3>
+              <p class="muted">Instagramコメント用</p>
             </div>
-            <div class="kv" id="env"></div>
-          </section>
+          </div>
+          <nav class="nav">
+            <a href="#overview">全体状況</a>
+            <a href="#setup">設定チェック</a>
+            <a href="#test">動作テスト</a>
+            <a href="#posts">最新投稿</a>
+            <a href="#events">受信履歴</a>
+          </nav>
+          <p class="side-note">
+            対象リールのキャプションに <code>[auto:tarot-001]</code> が入っている時だけ、コメント番号に合わせて返信します。
+          </p>
+        </aside>
 
-          <section class="panel">
-            <div class="section-head">
-              <h2>Test Tools</h2>
+        <div class="content">
+          <div class="hero" id="overview">
+            <div>
+              <h1>コメントからDM返信までを確認する画面</h1>
+              <p class="lead">
+                最新投稿を読み込み、対象マーカーが入っているか確認し、実際に送信する前にコメント文の判定をテストできます。
+              </p>
+              <p class="topline muted" id="updated">Loading...</p>
+            </div>
+            <div class="actions">
+              <button id="copy-webhook">Webhook URLをコピー</button>
+              <button id="refresh">更新</button>
+            </div>
+          </div>
+
+          <div class="summary">
+            <section class="metric"><span>返信済みコメント</span><strong id="m-processed">0</strong></section>
+            <section class="metric"><span>確認済み投稿</span><strong id="m-cached">0</strong></section>
+            <section class="metric"><span>受信履歴</span><strong id="m-events">0</strong></section>
+            <section class="metric"><span>登録マーカー</span><strong id="m-flows">0</strong></section>
+          </div>
+
+          <div class="layout">
+            <div class="stack">
+              <section class="panel" id="setup">
+                <div class="section-head">
+                  <h2>設定チェック</h2>
+                </div>
+                <p class="hint">Railwayに必要な値が入っているかを確認します。赤い項目がある時はVariablesを見直してください。</p>
+                <div class="kv" id="env"></div>
+              </section>
+
+              <section class="panel" id="test">
+                <div class="section-head">
+                  <h2>動作テスト</h2>
+                </div>
+                <p class="hint">最新投稿から選ぶか、media_idを直接入れて確認できます。「送信せずテスト」は実際の返信を送らずに判定だけ見ます。</p>
+
+                <div class="field">
+                  <label for="media-id">投稿のmedia_id</label>
+                  <input id="media-id" placeholder="17900000000000000" />
+                </div>
+
+                <div class="field">
+                  <label for="comment-text">テストするコメント</label>
+                  <input id="comment-text" value="1番" />
+                </div>
+
+                <div class="button-row">
+                  <button class="primary" id="load-media">最新投稿を取得</button>
+                  <button id="test-media">マーカー確認</button>
+                  <button id="dry-run">送信せずテスト</button>
+                </div>
+
+                <div class="result" id="test-result">まだテストしていません。</div>
+              </section>
             </div>
 
-            <div class="field">
-              <label for="media-id">Media ID</label>
-              <input id="media-id" placeholder="17900000000000000" />
-            </div>
+            <div class="stack">
+              <section class="panel" id="posts">
+                <div class="section-head">
+                  <h2>最新投稿</h2>
+                  <span class="muted" id="media-count">未取得</span>
+                </div>
+                <p class="hint">緑の「対象」が出ている投稿は、自動返信の対象として判定されています。</p>
+                <div class="media-list" id="media-list"></div>
+              </section>
 
-            <div class="field">
-              <label for="comment-text">Comment Text</label>
-              <input id="comment-text" value="1番" />
+              <section class="panel" id="events">
+                <div class="section-head">
+                  <h2>受信履歴</h2>
+                  <span class="muted">10秒ごとに更新</span>
+                </div>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>時間</th>
+                      <th>状態</th>
+                      <th>投稿</th>
+                      <th>コメント</th>
+                      <th>番号</th>
+                      <th>詳細</th>
+                    </tr>
+                  </thead>
+                  <tbody id="events-body"></tbody>
+                </table>
+              </section>
             </div>
-
-            <div class="button-row">
-              <button class="primary" id="load-media">Get Latest Posts</button>
-              <button id="test-media">Check Marker</button>
-              <button id="dry-run">Dry Run Comment</button>
-            </div>
-
-            <div class="result" id="test-result">No test yet</div>
-          </section>
-        </div>
-
-        <div class="stack">
-          <section class="panel">
-            <div class="section-head">
-              <h2>Latest Posts</h2>
-              <span class="muted" id="media-count">Not loaded</span>
-            </div>
-            <div class="media-list" id="media-list"></div>
-          </section>
-
-          <section class="panel">
-            <div class="section-head">
-              <h2>Recent Events</h2>
-              <span class="muted">Auto refreshes</span>
-            </div>
-            <table>
-              <thead>
-                <tr>
-                  <th>Time</th>
-                  <th>Status</th>
-                  <th>Media</th>
-                  <th>Comment</th>
-                  <th>Choice</th>
-                  <th>Detail</th>
-                </tr>
-              </thead>
-              <tbody id="events"></tbody>
-            </table>
-          </section>
+          </div>
         </div>
       </div>
     </main>
@@ -383,7 +515,6 @@
     <script>
       const params = new URLSearchParams(location.search);
       const token = params.get("token");
-
       const api = (path) =>
         token ? `${path}${path.includes("?") ? "&" : "?"}token=${encodeURIComponent(token)}` : path;
 
@@ -398,14 +529,14 @@
 
       async function loadStatus() {
         const data = await request("/api/status");
-        document.getElementById("updated").textContent = `Updated ${new Date().toLocaleString()}`;
+        document.getElementById("updated").textContent = `最終更新: ${new Date().toLocaleString()}`;
         document.getElementById("m-processed").textContent = data.stats.processedComments;
         document.getElementById("m-cached").textContent = data.stats.cachedMedia;
         document.getElementById("m-events").textContent = data.stats.recentEvents;
         document.getElementById("m-flows").textContent = data.flows.length;
 
         document.getElementById("env").innerHTML = Object.entries(data.env)
-          .map(([key, value]) => row(key, typeof value === "boolean" ? status(value) : value))
+          .map(([key, value]) => row(labelForEnv(key), typeof value === "boolean" ? status(value) : escapeHtml(value)))
           .join("");
 
         renderEvents(data.recentEvents);
@@ -415,9 +546,9 @@
         setBusy("load-media", true);
         try {
           const data = await request("/api/latest-media?limit=10");
-          document.getElementById("media-count").textContent = `${data.media.length} posts`;
+          document.getElementById("media-count").textContent = `${data.media.length}件`;
           document.getElementById("media-list").innerHTML =
-            data.media.map(mediaRow).join("") || `<div class="muted">No posts returned</div>`;
+            data.media.map(mediaRow).join("") || `<div class="muted">投稿が取得できませんでした。</div>`;
 
           document.querySelectorAll("[data-media-id]").forEach((button) => {
             button.addEventListener("click", () => {
@@ -477,42 +608,41 @@
       function mediaRow(item) {
         const caption = item.caption || "";
         const active = item.matchedFlow ? " active" : "";
+        const badge = item.matchedFlow
+          ? `<span class="badge good">対象</span>`
+          : `<span class="badge">対象外</span>`;
         return `
           <div class="media-row${active}">
             <div class="media-title">
               <div>
-                <strong>${escapeHtml(item.media_product_type || item.media_type || "MEDIA")}</strong>
+                <strong>${escapeHtml(item.media_product_type || item.media_type || "投稿")}</strong>
                 <span class="muted">${escapeHtml(item.timestamp || "")}</span>
               </div>
-              <button data-media-id="${escapeHtml(item.id)}">Use</button>
+              <button data-media-id="${escapeHtml(item.id)}">選択</button>
             </div>
-            <div><code>${escapeHtml(item.id)}</code> ${
-              item.matchedFlow
-                ? `<span class="ok">${escapeHtml(item.matchedFlow)}</span>`
-                : `<span class="muted">no marker</span>`
-            }</div>
-            <p class="caption">${escapeHtml(caption)}</p>
-            ${item.permalink ? `<a href="${escapeHtml(item.permalink)}" target="_blank" rel="noreferrer">Open on Instagram</a>` : ""}
+            <div><code>${escapeHtml(item.id)}</code> ${badge}</div>
+            <p class="caption">${escapeHtml(caption || "キャプションなし")}</p>
+            ${item.permalink ? `<a href="${escapeHtml(item.permalink)}" target="_blank" rel="noreferrer">Instagramで開く</a>` : ""}
           </div>
         `;
       }
 
       function renderEvents(events) {
-        document.getElementById("events").innerHTML =
+        document.getElementById("events-body").innerHTML =
           events
             .map(
               (event) => `
                 <tr>
                   <td>${escapeHtml(new Date(event.at).toLocaleString())}</td>
-                  <td>${escapeHtml(event.status ?? "")}</td>
+                  <td>${escapeHtml(statusLabel(event.status))}</td>
                   <td><code>${escapeHtml(event.mediaId ?? "")}</code></td>
                   <td><code>${escapeHtml(event.commentId ?? "")}</code></td>
                   <td>${escapeHtml(event.choice ?? "")}</td>
-                  <td>${escapeHtml(event.reason ?? event.message ?? event.marker ?? event.text ?? "")}</td>
+                  <td>${escapeHtml(detailLabel(event))}</td>
                 </tr>
               `
             )
-            .join("") || `<tr><td colspan="6" class="muted">No events yet</td></tr>`;
+            .join("") || `<tr><td colspan="6" class="muted">まだ受信履歴はありません。</td></tr>`;
       }
 
       function copyWebhookUrl() {
@@ -534,7 +664,37 @@
       }
 
       function status(value) {
-        return value ? '<span class="ok">set</span>' : '<span class="bad">missing</span>';
+        return value ? '<span class="ok">設定済み</span>' : '<span class="bad">未設定</span>';
+      }
+
+      function statusLabel(value) {
+        return {
+          received: "受信",
+          ignored: "無視",
+          sent: "送信済み",
+          error: "エラー"
+        }[value] || value || "";
+      }
+
+      function detailLabel(event) {
+        const details = {
+          missing_id_or_choice: "コメント本文から1/2/3を判定できませんでした",
+          already_processed: "すでに返信済みのコメントです",
+          no_caption_marker: "投稿キャプションに対象マーカーがありません"
+        };
+        return details[event.reason] || event.message || event.marker || event.text || "";
+      }
+
+      function labelForEnv(key) {
+        return {
+          VERIFY_TOKEN: "Webhook認証トークン",
+          IG_USER_ID: "InstagramアカウントID",
+          ACCESS_TOKEN: "Metaアクセストークン",
+          ADMIN_TOKEN: "管理画面トークン",
+          DATABASE_URL: "Postgres接続",
+          GRAPH_BASE_URL: "API接続先",
+          GRAPH_API_VERSION: "APIバージョン"
+        }[key] || key;
       }
 
       function setBusy(id, busy) {
