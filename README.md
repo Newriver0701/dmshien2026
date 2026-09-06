@@ -23,7 +23,8 @@ VERIFY_TOKEN=自分で決めた文字列
 IG_USER_ID=API setup with Instagram Loginで表示されるAccount ID
 IG_USERNAME=自分のInstagramユーザー名
 ACCESS_TOKEN=API setup with Instagram Loginで生成したAccess Token
-ADMIN_TOKEN=管理画面用の好きな長い文字列
+ADMIN_AUTH_ENABLED=false
+ADMIN_TOKEN=
 DATABASE_URL=Railway Postgresを追加すると自動で入ります
 API_MODE=instagram
 GRAPH_BASE_URL=https://graph.instagram.com
@@ -57,7 +58,7 @@ https://YOUR-RAILWAY-DOMAIN.up.railway.app/webhook
 Railwayにデプロイしたら、以下で見られます。
 
 ```text
-https://YOUR-RAILWAY-DOMAIN.up.railway.app/admin?token=ADMIN_TOKENの値
+https://YOUR-RAILWAY-DOMAIN.up.railway.app/admin
 ```
 
 見られるもの:
@@ -82,7 +83,19 @@ https://YOUR-RAILWAY-DOMAIN.up.railway.app/admin?token=ADMIN_TOKENの値
 - Facebookログイン方式に戻す時の補助Token取得
 - 受信したコメント、無視した理由、送信結果、エラー
 
-`ADMIN_TOKEN` を入れていない場合は `/admin` だけで開けますが、外から見えるURLなので設定するのがおすすめです。
+初期状態では管理画面認証は無効です。
+あとで認証をかけたい場合だけ、Railway Variablesに以下を入れてください。
+
+```text
+ADMIN_AUTH_ENABLED=true
+ADMIN_TOKEN=管理画面用の好きな長い文字列
+```
+
+その場合の管理画面URLは以下です。
+
+```text
+https://YOUR-RAILWAY-DOMAIN.up.railway.app/admin?token=ADMIN_TOKENの値
+```
 
 ## Instagramログイン方式
 

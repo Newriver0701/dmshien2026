@@ -39,6 +39,7 @@ const {
   IG_USER_ID,
   ACCESS_TOKEN,
   ADMIN_TOKEN,
+  ADMIN_AUTH_ENABLED = "false",
   DATABASE_URL,
   APP_ID,
   APP_SECRET,
@@ -120,6 +121,7 @@ app.get("/api/status", requireAdmin, async (_req, res) => {
       IG_USER_ID: Boolean(IG_USER_ID),
       ACCESS_TOKEN: Boolean(ACCESS_TOKEN),
       ADMIN_TOKEN: Boolean(ADMIN_TOKEN),
+      ADMIN_AUTH_ENABLED,
       DATABASE_URL: Boolean(DATABASE_URL),
       APP_ID: Boolean(APP_ID),
       APP_SECRET: Boolean(APP_SECRET),
@@ -711,6 +713,7 @@ async function sendPrivateReply(commentId, message) {
 }
 
 function requireAdmin(req, res, next) {
+  if (ADMIN_AUTH_ENABLED !== "true") return next();
   if (!ADMIN_TOKEN) return next();
 
   const token = req.query.token || req.header("x-admin-token");
