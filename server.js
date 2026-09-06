@@ -248,6 +248,59 @@ app.post("/api/page-tokens", requireAdmin, async (req, res) => {
   }
 });
 
+app.post("/api/instagram/exchange-token", requireAdmin, async (req, res) => {
+  try {
+    const shortToken = String(req.body?.shortToken ?? "").trim();
+    if (!shortToken) return res.status(400).json({ ok: false, error: "shortToken is required" });
+    if (!APP_SECRET) {
+      return res.status(400).json({
+        ok: false,
+        error: "APP_SECRET must be set in Railway Variables"
+      });
+    }
+
+    const url = new URL(`${GRAPH_BASE_URL}/access_token`);
+    url.searchParams.set("grant_type", "ig_exchange_token");
+    url.searchParams.set("client_secret", APP_SECRET);
+    url.searchParams.set("access_token", shortToken);
+
+    const token = await fetchJson(url);
+    res.json({
+      ok: true,
+      accessToken: token.access_token,
+      tokenType: token.token_type,
+      expiresIn: token.expires_in,
+      expiresAt: expiresAt(token.expires_in),
+      note: "このaccessTokenをRailwayのACCESS_TOKENに入れて再デプロイしてください。"
+    });
+  } catch (error) {
+    res.status(500).json({ ok: false, error: errorMessage(error) });
+  }
+});
+
+app.post("/api/instagram/refresh-token", requireAdmin, async (req, res) => {
+  try {
+    const longToken = String(req.body?.longToken ?? ACCESS_TOKEN ?? "").trim();
+    if (!longToken) return res.status(400).json({ ok: false, error: "longToken is required" });
+
+    const url = new URL(`${GRAPH_BASE_URL}/refresh_access_token`);
+    url.searchParams.set("grant_type", "ig_refresh_token");
+    url.searchParams.set("access_token", longToken);
+
+    const token = await fetchJson(url);
+    res.json({
+      ok: true,
+      accessToken: token.access_token,
+      tokenType: token.token_type,
+      expiresIn: token.expires_in,
+      expiresAt: expiresAt(token.expires_in),
+      note: "返ってきたaccessTokenをRailwayのACCESS_TOKENに入れて再デプロイしてください。"
+    });
+  } catch (error) {
+    res.status(500).json({ ok: false, error: errorMessage(error) });
+  }
+});
+
 app.get("/api/latest-media", requireAdmin, async (req, res) => {
   try {
     const limit = Math.min(Number(req.query.limit ?? 10), 25);
@@ -740,6 +793,12 @@ function addEvent(event) {
 
 function errorMessage(error) {
   return error instanceof Error ? error.message : String(error);
+}
+
+function expiresAt(expiresIn) {
+  const seconds = Number(expiresIn);
+  if (!Number.isFinite(seconds)) return null;
+  return new Date(Date.now() + seconds * 1000).toISOString();
 }
 
 function normalizeComment(comment) {

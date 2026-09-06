@@ -26,13 +26,15 @@ ACCESS_TOKEN=API setup with Instagram Loginで生成したAccess Token
 ADMIN_AUTH_ENABLED=false
 ADMIN_TOKEN=
 DATABASE_URL=Railway Postgresを追加すると自動で入ります
+APP_SECRET=Metaアプリシークレット
 API_MODE=instagram
 GRAPH_BASE_URL=https://graph.instagram.com
 GRAPH_API_VERSION=v26.0
 FACEBOOK_GRAPH_BASE_URL=https://graph.facebook.com
 ```
 
-`APP_ID` と `APP_SECRET` は、Facebookログイン方式の補助Token取得を使う時だけ入れます。
+`APP_SECRET` はInstagram短期Tokenを長期Tokenに交換する時に使います。
+`APP_ID` はFacebookログイン方式の補助Token取得を使う時だけ入れます。
 
 4. Meta Developerの `Use Cases -> Customize -> API setup with Instagram Login` でWebhook URLに設定
 
@@ -110,9 +112,13 @@ Facebook Page Access Tokenとは混ぜないでください。`IG_USER_ID` と `
    - `instagram_business_manage_messages`
 4. Instagram Testerを追加し、Instagram側で招待を承認する
 5. `Generate access tokens` でAccess Tokenを発行する
-6. 同じ画面のAccount IDを `IG_USER_ID` に入れる
-7. Access Tokenを `ACCESS_TOKEN` に入れる
-8. 同じ画面のWebhook設定で `/webhook` を登録する
+6. 管理画面の「Instagram長期Tokenに交換」に貼る
+7. 返ってきた `accessToken` をRailwayの `ACCESS_TOKEN` に入れる
+8. 同じ画面のAccount IDを `IG_USER_ID` に入れる
+9. 同じ画面のWebhook設定で `/webhook` を登録する
+
+長期Tokenは約60日で期限切れします。
+管理画面の「Instagram長期Tokenを更新」で更新し、返ってきた `accessToken` をRailwayの `ACCESS_TOKEN` に入れ直してください。
 
 ## Facebookログイン方式の補助
 
