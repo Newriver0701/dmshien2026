@@ -5,6 +5,7 @@ const { Pool } = pg;
 let disabledReason = "";
 export const DEFAULT_SETTINGS = {
   automationEnabled: false,
+  targetMode: "all_posts",
   aiChoiceEnabled: true,
   aiReadingEnabled: true,
   publicReplyTemplates: [

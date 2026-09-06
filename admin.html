@@ -62,6 +62,7 @@
       }
 
       input,
+      select,
       textarea {
         width: 100%;
         border: 1px solid #cbd5e1;
@@ -497,6 +498,7 @@
           <section class="metric"><span>今日Webhook</span><strong id="m-webhook">0</strong></section>
           <section class="metric"><span>今日DM送信</span><strong id="m-sent">0</strong></section>
           <section class="metric"><span>今日エラー</span><strong id="m-errors">0</strong></section>
+          <section class="metric"><span>対象投稿</span><strong id="m-target">全投稿</strong></section>
           <section class="metric"><span>Postgres</span><strong id="m-db">確認中</strong></section>
         </div>
 
@@ -526,6 +528,13 @@
               <button id="add-template">テンプレート追加</button>
             </div>
             <div class="stack" id="public-template-list"></div>
+          </div>
+          <div class="field">
+            <label for="target-mode">対象投稿</label>
+            <select id="target-mode">
+              <option value="all_posts">全投稿</option>
+              <option value="marker_only">マーカー付きのみ</option>
+            </select>
           </div>
         </section>
 
@@ -675,6 +684,7 @@
         document.getElementById("m-webhook").textContent = data.stats.webhookToday ?? 0;
         document.getElementById("m-sent").textContent = data.stats.sentToday ?? 0;
         document.getElementById("m-errors").textContent = data.stats.errorsToday ?? 0;
+        document.getElementById("m-target").textContent = targetModeLabel(settings.targetMode);
         document.getElementById("m-db").textContent = data.database.connected ? "接続中" : data.database.configured ? "未接続" : "未設定";
         renderSettingBadges();
         renderEnv(data.env, data.database);
@@ -700,6 +710,8 @@
         document.getElementById("b-ai-reading").textContent = settings.aiReadingEnabled ? "AI on" : "AI off";
         document.getElementById("toggle-ai-choice").textContent = settings.aiChoiceEnabled ? "番号AIをOFF" : "番号AIをON";
         document.getElementById("toggle-ai-reading").textContent = settings.aiReadingEnabled ? "鑑定AIをOFF" : "鑑定AIをON";
+        document.getElementById("m-target").textContent = targetModeLabel(settings.targetMode);
+        document.getElementById("target-mode").value = settings.targetMode || "all_posts";
       }
 
       async function toggleAutomation() {
@@ -721,7 +733,8 @@
         const publicReplyTemplates = [...document.querySelectorAll("[data-template-input]")]
           .map((item) => item.value.trim())
           .filter(Boolean);
-        const data = await put("/api/settings", { settings: { publicReplyTemplates } });
+        const targetMode = document.getElementById("target-mode").value;
+        const data = await put("/api/settings", { settings: { publicReplyTemplates, targetMode } });
         settings = data.settings;
         renderSettings();
         showAi({ ok: true, message: "設定を保存しました", settings });
@@ -853,13 +866,14 @@
 
       function mediaCard(item) {
         const image = item.thumbnailUrl || item.mediaUrl || "";
+        const target = mediaTarget(item);
         return `
           <div class="item media-item" data-media-id="${escapeHtml(item.mediaId)}">
             ${image ? `<img class="thumb" src="${escapeHtml(image)}" alt="">` : `<div class="thumb"></div>`}
             <div>
               <div class="line">
                 <strong>${escapeHtml(item.mediaProductType || item.mediaType || "投稿")}</strong>
-                <span class="badge ${item.active ? "good" : ""}">${item.active ? "対象" : "対象外"}</span>
+                <span class="badge ${target.allowed ? "good" : ""}">${target.label}</span>
               </div>
               <p><code>${escapeHtml(item.mediaId)}</code></p>
               <p class="muted">コメント ${item.commentsCount ?? "-"} / いいね ${item.likeCount ?? "-"}</p>
@@ -871,13 +885,14 @@
 
       function renderPostDetail(item, reading, tasks) {
         const image = item.thumbnailUrl || item.mediaUrl || "";
+        const target = mediaTarget(item);
         document.getElementById("post-detail").innerHTML = `
           <div class="media-item item">
             ${image ? `<img class="thumb" src="${escapeHtml(image)}" alt="">` : `<div class="thumb"></div>`}
             <div>
               <div class="line">
                 <h3>${escapeHtml(item.flowName || "自動化なし")}</h3>
-                <span class="badge ${item.active ? "good" : ""}">${item.active ? "対象リール" : "対象外"}</span>
+                <span class="badge ${target.allowed ? "good" : ""}">${target.label}</span>
               </div>
               <p><code>${escapeHtml(item.mediaId)}</code></p>
               <p class="muted">目印: ${escapeHtml(item.matchedMarker || "なし")}</p>
@@ -1069,6 +1084,23 @@
           retrying: "再実行中",
           unprocessed: "未処理"
         }[value] || value || "未処理";
+      }
+
+      function targetModeLabel(value) {
+        return value === "marker_only" ? "マーカー付き" : "全投稿";
+      }
+
+      function mediaTarget(item) {
+        if (settings.targetMode === "marker_only") {
+          return {
+            allowed: Boolean(item.active),
+            label: item.active ? "対象リール" : "対象外"
+          };
+        }
+        return {
+          allowed: true,
+          label: item.active ? "マーカー対象" : "全投稿対象"
+        };
       }
 
       function commentIdentity(comment) {

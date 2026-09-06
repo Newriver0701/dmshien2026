@@ -180,6 +180,9 @@ app.put("/api/settings", requireAdmin, async (req, res) => {
     if (Object.hasOwn(incoming, "automationEnabled")) {
       settings.automationEnabled = Boolean(incoming.automationEnabled);
     }
+    if (Object.hasOwn(incoming, "targetMode")) {
+      settings.targetMode = incoming.targetMode === "marker_only" ? "marker_only" : "all_posts";
+    }
     if (Object.hasOwn(incoming, "aiChoiceEnabled")) {
       settings.aiChoiceEnabled = Boolean(incoming.aiChoiceEnabled);
     }
@@ -566,7 +569,8 @@ app.post("/api/dry-run-comment", requireAdmin, async (req, res) => {
     const choiceResult = await detectChoice(sanitizedText, settings);
     const choice = choiceResult.choice === "unknown" ? null : choiceResult.choice;
     const flow = await getFlowForMedia(mediaId);
-    const reading = choice && flow ? await getMediaTarotReading(mediaId) : null;
+    const targetAllowed = isTargetAllowed(flow, settings);
+    const reading = choice && targetAllowed ? await getMediaTarotReading(mediaId) : null;
     const publicReply = choice ? pickPublicReply(settings.publicReplyTemplates, choice) : null;
     const privateReply = choice ? reading?.readings?.[choice] ?? null : null;
 
@@ -579,9 +583,11 @@ app.post("/api/dry-run-comment", requireAdmin, async (req, res) => {
       choiceMethod: choiceResult.method,
       matched: Boolean(flow),
       marker: flow?.marker ?? null,
+      targetMode: settings.targetMode,
+      targetAllowed,
       automationEnabled: settings.automationEnabled,
-      wouldSend: Boolean(settings.automationEnabled && choice && flow && privateReply),
-      needsReading: Boolean(choice && flow && !privateReply),
+      wouldSend: Boolean(settings.automationEnabled && choice && targetAllowed && privateReply),
+      needsReading: Boolean(choice && targetAllowed && !privateReply),
       publicReply,
       publicReplyTemplates: settings.publicReplyTemplates,
       privateReply
@@ -725,16 +731,18 @@ async function handleComment(comment) {
   }
 
   const flow = await getFlowForMedia(mediaId);
-  await addTaskStep(task?.taskId, "media_flow_check", flow ? "success" : "skipped", flow ? "対象フローを確認しました" : "対象リールではありません", {
-    marker: flow?.marker ?? null
+  const targetAllowed = isTargetAllowed(flow, settings);
+  await addTaskStep(task?.taskId, "media_flow_check", targetAllowed ? "success" : "skipped", targetAllowed ? "対象投稿として処理します" : "対象リールではありません", {
+    marker: flow?.marker ?? null,
+    targetMode: settings.targetMode
   });
-  if (!flow) {
+  if (!targetAllowed) {
     await updateCommentStatus(commentId, "outside_target");
     await updateAutomationTask(task?.taskId, { status: "outside_target", errorMessage: "対象リールではありません" });
     addEvent({ status: "ignored", reason: "no_caption_marker", commentId, mediaId, choice });
     return;
   }
-  if (flow.enabled === false) {
+  if (settings.targetMode === "marker_only" && flow?.enabled === false) {
     await updateCommentStatus(commentId, "flow_paused");
     await updateAutomationTask(task?.taskId, { status: "flow_paused", errorMessage: "フローが停止中です" });
     await addTaskStep(task?.taskId, "flow_enabled", "skipped", "フローが停止中です");
@@ -806,7 +814,8 @@ async function runAutomationTask(task, options = {}) {
   }
 
   const flow = options.flow ?? (await getFlowForMedia(task.mediaId));
-  if (!flow) throw new Error("対象リールではありません");
+  if (!isTargetAllowed(flow, settings)) throw new Error("対象リールではありません");
+  if (settings.targetMode === "marker_only" && flow?.enabled === false) throw new Error("フローが停止中です");
 
   const media = (await getMediaPost(task.mediaId)) ?? (await getMedia(task.mediaId));
   const reading = await getOrCreateMediaReading(media, taskId, settings);
@@ -853,7 +862,7 @@ async function runAutomationTask(task, options = {}) {
     privateReply,
     errorMessage: null
   });
-  addEvent({ status: "sent", commentId: task.commentId, mediaId: task.mediaId, choice: task.choice, marker: flow.marker });
+  addEvent({ status: "sent", commentId: task.commentId, mediaId: task.mediaId, choice: task.choice, marker: flow?.marker ?? null });
 
   return getAutomationTask(taskId);
 }
@@ -1274,6 +1283,10 @@ function pickPublicReply(templates = [], choice = "") {
   const fallback = "{choice}を選びましたね。鑑定結果をDMに送りました。";
   const template = normalized[Math.floor(Math.random() * normalized.length)] ?? fallback;
   return template.replaceAll("{choice}", choice);
+}
+
+function isTargetAllowed(flow, settings = {}) {
+  return settings.targetMode === "all_posts" || Boolean(flow);
 }
 
 function splitReadingText(rawText) {
