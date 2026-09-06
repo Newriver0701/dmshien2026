@@ -117,6 +117,9 @@ https://YOUR-RAILWAY-DOMAIN.up.railway.app/admin?token=ADMIN_TOKENの値
 
 トークンは画面に表示するだけで、Postgresには保存しません。
 
+`Session key invalid` / `Invalid Access Token` が出た場合は、管理画面の「Tokenを確認」を押してください。
+Facebook Page Token、期限切れToken、権限を取り消したToken、Instagram Login以外で作ったTokenはInstagram APIでは失敗します。
+
 ## Postgres連携
 
 RailwayでPostgresを追加すると、`DATABASE_URL` が自動で使えるようになります。

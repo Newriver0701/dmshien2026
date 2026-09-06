@@ -632,6 +632,7 @@
                 <div class="row-actions">
                   <button id="ig-exchange-token" class="primary">Instagram長期Tokenに交換</button>
                   <button id="ig-refresh-token">Instagram長期Tokenを更新</button>
+                  <button id="ig-check-token">Tokenを確認</button>
                   <button id="copy-ig-token">長期Tokenをコピー</button>
                 </div>
                 <div class="result" id="token-result">まだ実行していません。</div>
@@ -687,6 +688,7 @@
       document.getElementById("copy-webhook").addEventListener("click", copyWebhookUrl);
       document.getElementById("ig-exchange-token").addEventListener("click", exchangeInstagramToken);
       document.getElementById("ig-refresh-token").addEventListener("click", refreshInstagramToken);
+      document.getElementById("ig-check-token").addEventListener("click", checkInstagramToken);
       document.getElementById("copy-ig-token").addEventListener("click", copyInstagramToken);
 
       refreshAll();
@@ -866,6 +868,21 @@
           showTokenError(error);
         } finally {
           setBusy("ig-refresh-token", false);
+        }
+      }
+
+      async function checkInstagramToken() {
+        setBusy("ig-check-token", true);
+        try {
+          const tokenValue =
+            document.getElementById("ig-long-token").value ||
+            document.getElementById("ig-short-token").value;
+          const data = await post("/api/instagram/check-token", { token: tokenValue });
+          showToken(data);
+        } catch (error) {
+          showTokenError(error);
+        } finally {
+          setBusy("ig-check-token", false);
         }
       }
 

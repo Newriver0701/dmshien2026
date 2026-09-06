@@ -194,7 +194,7 @@ app.put("/api/flows/:flowId/replies", requireAdmin, async (req, res) => {
 
 app.post("/api/instagram/exchange-token", requireAdmin, async (req, res) => {
   try {
-    const shortToken = String(req.body?.shortToken ?? "").trim();
+    const shortToken = cleanToken(req.body?.shortToken);
     if (!shortToken) return res.status(400).json({ ok: false, error: "shortToken is required" });
     if (!APP_SECRET) {
       return res.status(400).json({
@@ -224,7 +224,7 @@ app.post("/api/instagram/exchange-token", requireAdmin, async (req, res) => {
 
 app.post("/api/instagram/refresh-token", requireAdmin, async (req, res) => {
   try {
-    const longToken = String(req.body?.longToken ?? ACCESS_TOKEN ?? "").trim();
+    const longToken = cleanToken(req.body?.longToken ?? ACCESS_TOKEN);
     if (!longToken) return res.status(400).json({ ok: false, error: "longToken is required" });
 
     const url = new URL(`${GRAPH_BASE_URL}/refresh_access_token`);
@@ -242,6 +242,31 @@ app.post("/api/instagram/refresh-token", requireAdmin, async (req, res) => {
     });
   } catch (error) {
     res.status(500).json({ ok: false, error: errorMessage(error) });
+  }
+});
+
+app.post("/api/instagram/check-token", requireAdmin, async (req, res) => {
+  try {
+    const token = cleanToken(req.body?.token ?? ACCESS_TOKEN);
+    if (!token) return res.status(400).json({ ok: false, error: "token is required" });
+
+    const url = new URL(`${GRAPH_BASE_URL}/${GRAPH_API_VERSION}/me`);
+    url.searchParams.set("fields", "id,username,account_type");
+    url.searchParams.set("access_token", token);
+
+    const profile = await fetchJson(url);
+    res.json({
+      ok: true,
+      profile,
+      note: "このTokenはInstagram APIで有効です。表示されたidをIG_USER_IDに使ってください。"
+    });
+  } catch (error) {
+    res.status(500).json({
+      ok: false,
+      error: errorMessage(error),
+      hint:
+        "Instagram Loginで生成したAccess Tokenか確認してください。Facebook/Page Token、期限切れ、権限取り消し、余分なBearer/引用符/改行があるTokenは失敗します。"
+    });
   }
 });
 
@@ -743,6 +768,14 @@ function expiresAt(expiresIn) {
   const seconds = Number(expiresIn);
   if (!Number.isFinite(seconds)) return null;
   return new Date(Date.now() + seconds * 1000).toISOString();
+}
+
+function cleanToken(value) {
+  return String(value ?? "")
+    .trim()
+    .replace(/^Bearer\s+/i, "")
+    .replace(/^["']|["']$/g, "")
+    .replace(/\s+/g, "");
 }
 
 function normalizeComment(comment) {
