@@ -493,7 +493,13 @@ app.post("/api/media/:mediaId/sync-comments", requireAdmin, async (req, res) => 
     const mediaId = req.params.mediaId;
     const limit = Math.min(Number(req.body?.limit ?? 50), 50);
     const comments = await getMediaCommentsFromInstagram(mediaId, limit);
+    const settings = await getSettings();
+    const flow = await getFlowForMedia(mediaId);
+    const targetAllowed = isTargetAllowed(flow, settings);
     let saved = 0;
+    let prepared = 0;
+    let skipped = 0;
+    let errors = 0;
 
     for (const comment of comments) {
       const normalized = normalizeComment({ ...comment, media: { id: mediaId } });
@@ -504,10 +510,75 @@ app.post("/api/media/:mediaId/sync-comments", requireAdmin, async (req, res) => 
         automationStatus: isOwner ? "owner_comment" : "unprocessed"
       });
       saved += 1;
+
+      if (isOwner || !normalized.commentId || !targetAllowed) {
+        skipped += 1;
+        continue;
+      }
+
+      const task = await createAutomationTask({
+        ...normalized,
+        sanitizedText: sanitizeText(normalized.text),
+        status: "received"
+      });
+
+      try {
+        const choiceResult = await detectChoice(sanitizeText(normalized.text), settings, task?.taskId);
+        const choice = choiceResult.choice === "unknown" ? null : choiceResult.choice;
+        await updateAutomationTask(task?.taskId, {
+          choice,
+          choiceMethod: choiceResult.method,
+          status: choice ? "choice_detected" : "ignored",
+          errorMessage: choice ? null : "番号を判定できませんでした"
+        });
+
+        await upsertMediaComment({
+          ...normalized,
+          text: sanitizeText(normalized.text) || normalized.text,
+          choice,
+          isOwnerComment: false,
+          automationStatus: choice ? "received" : "ignored",
+          errorMessage: choice ? null : "番号を判定できませんでした"
+        });
+
+        if (!choice) {
+          skipped += 1;
+          continue;
+        }
+
+        if (processedComments.has(normalized.commentId) || (await hasProcessedComment(normalized.commentId))) {
+          await updateCommentStatus(normalized.commentId, "already_processed");
+          await updateAutomationTask(task?.taskId, { status: "already_processed", errorMessage: "すでに返信済みです" });
+          skipped += 1;
+          continue;
+        }
+
+        const result = await prepareAutomationTask(
+          {
+            ...(task ?? {}),
+            commentId: normalized.commentId,
+            mediaId,
+            username: normalized.username,
+            text: normalized.text,
+            sanitizedText: sanitizeText(normalized.text),
+            choice,
+            choiceMethod: choiceResult.method
+          },
+          { settings, flow }
+        );
+        await updateCommentStatus(normalized.commentId, "ready_to_send");
+        await addTaskStep(result.task?.taskId, "send_gate", "skipped", "コメント取得から準備しました。最後の送信だけ待機しています");
+        prepared += 1;
+      } catch (error) {
+        errors += 1;
+        await updateCommentStatus(normalized.commentId, "error", errorMessage(error));
+        await updateAutomationTask(task?.taskId, { status: "error", errorMessage: errorMessage(error) });
+        await addTaskStep(task?.taskId, "prepare_from_sync", "error", errorMessage(error));
+      }
     }
 
-    addEvent({ status: "sync", mediaId, message: `${saved}件のコメントを同期しました` });
-    res.json({ ok: true, count: saved });
+    addEvent({ status: "sync", mediaId, message: `${saved}件のコメントを同期し、${prepared}件を送信待ちにしました` });
+    res.json({ ok: true, count: saved, prepared, skipped, errors });
   } catch (error) {
     res.status(500).json({ ok: false, error: errorMessage(error) });
   }
@@ -941,7 +1012,7 @@ jsonのみで返してください。`
 }
 
 async function getOrCreateMediaReading(media, taskId = null, settings = null) {
-  const theme = extractTheme(media?.caption ?? "");
+  const theme = extractTheme(media?.caption ?? "") || "今あなたに必要なメッセージ";
   const hash = hashText(theme);
   const existing = media?.id || media?.mediaId ? await getMediaTarotReading(media.id ?? media.mediaId) : null;
 
@@ -969,8 +1040,7 @@ async function generateAndSaveReading(media, taskId = null) {
   const mediaId = media?.mediaId ?? media?.id;
   if (!mediaId) throw new Error("mediaId is required for reading generation");
 
-  const theme = extractTheme(media?.caption ?? "");
-  if (!theme) throw new Error("キャプションからテーマを抽出できませんでした");
+  const theme = extractTheme(media?.caption ?? "") || "今あなたに必要なメッセージ";
 
   const cards = pickTarotCards(3);
   const rawText = await generateReadingWithAi(theme, cards);
