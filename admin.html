@@ -196,7 +196,7 @@
 
       .metrics {
         display: grid;
-        grid-template-columns: repeat(6, 1fr);
+        grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
         gap: 10px;
       }
 
@@ -247,6 +247,43 @@
         display: grid;
         grid-template-columns: 1fr auto;
         gap: 8px;
+      }
+
+      .mini-metrics {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 8px;
+        margin: 10px 0;
+      }
+
+      .mini-metric {
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        padding: 8px;
+        background: #f8fafc;
+      }
+
+      .mini-metric span {
+        display: block;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .mini-metric strong {
+        display: block;
+        margin-top: 2px;
+      }
+
+      .reading-grid {
+        display: grid;
+        gap: 10px;
+      }
+
+      .reading-card {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 12px;
+        background: white;
       }
 
       .grid {
@@ -475,7 +512,7 @@
           <a href="#token">Token</a>
         </nav>
         <p class="aside-note">
-          完全自動化は初期OFFです。ONにするとWebhook受信から公開返信とDM送信まで自動で進みます。
+          自動送信は初期OFFです。OFFでもWebhook受信、番号判定、鑑定文生成、返信文準備までは自動で進みます。
         </p>
       </aside>
 
@@ -493,8 +530,9 @@
         </div>
 
         <div class="metrics">
-          <section class="metric"><span>完全自動化</span><strong id="m-auto">OFF</strong></section>
+          <section class="metric"><span>自動送信</span><strong id="m-auto">OFF</strong></section>
           <section class="metric"><span>今日のタスク</span><strong id="m-tasks">0</strong></section>
+          <section class="metric"><span>送信待ち</span><strong id="m-ready">0</strong></section>
           <section class="metric"><span>今日Webhook</span><strong id="m-webhook">0</strong></section>
           <section class="metric"><span>今日DM送信</span><strong id="m-sent">0</strong></section>
           <section class="metric"><span>今日エラー</span><strong id="m-errors">0</strong></section>
@@ -509,7 +547,7 @@
               <p class="hint">WebhookからDM送信までの実行ステップです。</p>
             </div>
             <div class="row-actions">
-              <button id="toggle-auto" class="primary">完全自動化をONにする</button>
+              <button id="toggle-auto" class="primary">自動送信をONにする</button>
               <button id="toggle-ai-choice">番号AI</button>
               <button id="toggle-ai-reading">鑑定AI</button>
               <button id="save-settings">設定を保存</button>
@@ -681,6 +719,7 @@
         document.getElementById("updated").textContent = `最終更新: ${new Date().toLocaleString()}`;
         document.getElementById("m-auto").textContent = settings.automationEnabled ? "ON" : "OFF";
         document.getElementById("m-tasks").textContent = data.stats.tasksToday ?? 0;
+        document.getElementById("m-ready").textContent = data.stats.readyTasks ?? 0;
         document.getElementById("m-webhook").textContent = data.stats.webhookToday ?? 0;
         document.getElementById("m-sent").textContent = data.stats.sentToday ?? 0;
         document.getElementById("m-errors").textContent = data.stats.errorsToday ?? 0;
@@ -702,7 +741,7 @@
       }
 
       function renderSettingBadges() {
-        document.getElementById("toggle-auto").textContent = settings.automationEnabled ? "完全自動化をOFFにする" : "完全自動化をONにする";
+        document.getElementById("toggle-auto").textContent = settings.automationEnabled ? "自動送信をOFFにする" : "自動送信をONにする";
         document.getElementById("m-auto").textContent = settings.automationEnabled ? "ON" : "OFF";
         document.getElementById("b-auto").textContent = settings.automationEnabled ? "active" : "paused";
         document.getElementById("b-auto").className = `badge ${settings.automationEnabled ? "good" : "warn"}`;
@@ -817,7 +856,7 @@
             </div>
           </div>
           <div class="row-actions">
-            <button class="primary" data-retry-task="${escapeHtml(task.taskId)}">このタスクを再実行</button>
+            <button class="primary" data-retry-task="${escapeHtml(task.taskId)}">${task.status === "sent" ? "このタスクを再送信" : "このタスクを送信"}</button>
           </div>
         `;
         document.querySelector("[data-retry-task]")?.addEventListener("click", async (event) => {
@@ -867,16 +906,20 @@
       function mediaCard(item) {
         const image = item.thumbnailUrl || item.mediaUrl || "";
         const target = mediaTarget(item);
+        const needsReading = Number(item.savedCommentCount ?? 0) > 0 && !item.hasReading;
         return `
           <div class="item media-item" data-media-id="${escapeHtml(item.mediaId)}">
             ${image ? `<img class="thumb" src="${escapeHtml(image)}" alt="">` : `<div class="thumb"></div>`}
             <div>
               <div class="line">
                 <strong>${escapeHtml(item.mediaProductType || item.mediaType || "投稿")}</strong>
-                <span class="badge ${target.allowed ? "good" : ""}">${target.label}</span>
+                <div class="row-actions">
+                  <span class="badge ${target.allowed ? "good" : ""}">${target.label}</span>
+                  <span class="badge ${item.hasReading ? "good" : needsReading ? "warn" : ""}">${item.hasReading ? "鑑定あり" : needsReading ? "鑑定未生成" : "鑑定なし"}</span>
+                </div>
               </div>
               <p><code>${escapeHtml(item.mediaId)}</code></p>
-              <p class="muted">コメント ${item.commentsCount ?? "-"} / いいね ${item.likeCount ?? "-"}</p>
+              <p class="muted">IGコメント ${item.commentsCount ?? "-"} / 保存済み ${item.savedCommentCount ?? 0} / 送信待ち ${item.readyTaskCount ?? 0} / 送信済み ${item.sentTaskCount ?? 0}</p>
               <p class="caption">${escapeHtml(item.caption || "キャプションなし")}</p>
             </div>
           </div>
@@ -886,13 +929,22 @@
       function renderPostDetail(item, reading, tasks) {
         const image = item.thumbnailUrl || item.mediaUrl || "";
         const target = mediaTarget(item);
+        const needsReading = Number(item.savedCommentCount ?? 0) > 0 && !reading;
         document.getElementById("post-detail").innerHTML = `
           <div class="media-item item">
             ${image ? `<img class="thumb" src="${escapeHtml(image)}" alt="">` : `<div class="thumb"></div>`}
             <div>
               <div class="line">
                 <h3>${escapeHtml(item.flowName || "自動化なし")}</h3>
-                <span class="badge ${target.allowed ? "good" : ""}">${target.label}</span>
+                <div class="row-actions">
+                  <span class="badge ${target.allowed ? "good" : ""}">${target.label}</span>
+                  <span class="badge ${reading ? "good" : needsReading ? "warn" : ""}">${reading ? "鑑定あり" : needsReading ? "コメントあり・鑑定未生成" : "鑑定なし"}</span>
+                </div>
+              </div>
+              <div class="mini-metrics">
+                <div class="mini-metric"><span>保存コメント</span><strong>${item.savedCommentCount ?? 0}</strong></div>
+                <div class="mini-metric"><span>送信待ち</span><strong>${item.readyTaskCount ?? 0}</strong></div>
+                <div class="mini-metric"><span>送信済み</span><strong>${item.sentTaskCount ?? 0}</strong></div>
               </div>
               <p><code>${escapeHtml(item.mediaId)}</code></p>
               <p class="muted">目印: ${escapeHtml(item.matchedMarker || "なし")}</p>
@@ -901,14 +953,48 @@
             </div>
           </div>
         `;
-        document.getElementById("post-reading").textContent = reading
-          ? `テーマ: ${reading.theme}\nカード: ① ${reading.cards?.["1"]} / ② ${reading.cards?.["2"]} / ③ ${reading.cards?.["3"]}\n\n${reading.rawText || Object.values(reading.readings ?? {}).join("\n\n")}`
-          : "鑑定文はまだ生成されていません。";
+        document.getElementById("post-reading").innerHTML = readingBlock(reading, needsReading);
         document.getElementById("post-tasks").innerHTML =
           tasks.map(taskCard).join("") || `<p class="muted">この投稿のタスクはまだありません。</p>`;
         document.querySelectorAll("#post-tasks [data-task-id]").forEach((el) => {
           el.addEventListener("click", () => selectTask(el.dataset.taskId));
         });
+      }
+
+      function readingBlock(reading, needsReading) {
+        if (!reading) {
+          return `
+            <div class="item ${needsReading ? "" : "dim"}">
+              <div class="line">
+                <strong>${needsReading ? "コメントあり・鑑定文未生成" : "鑑定文なし"}</strong>
+                <span class="badge ${needsReading ? "warn" : ""}">${needsReading ? "要生成" : "未生成"}</span>
+              </div>
+              <p class="muted">${needsReading ? "この投稿にはコメントがあります。鑑定文を生成すると、送信待ちタスクのDM本文として使えます。" : "コメント受信時、または鑑定文を生成ボタンで作成されます。"}</p>
+            </div>
+          `;
+        }
+
+        return `
+          <div class="item">
+            <div class="line">
+              <strong>投稿別の鑑定文</strong>
+              <span class="badge good">生成済み</span>
+            </div>
+            <p class="muted">テーマ: ${escapeHtml(reading.theme || "-")}</p>
+            <p class="muted">生成: ${escapeHtml(formatDate(reading.generatedAt))}</p>
+          </div>
+          <div class="reading-grid">
+            ${["1", "2", "3"].map((choice) => `
+              <div class="reading-card">
+                <div class="line">
+                  <strong>${choice}番</strong>
+                  <span class="badge">${escapeHtml(reading.cards?.[choice] || "カード未取得")}</span>
+                </div>
+                <p class="caption">${escapeHtml(reading.readings?.[choice] || "本文なし")}</p>
+              </div>
+            `).join("")}
+          </div>
+        `;
       }
 
       async function generateReading() {
@@ -1071,8 +1157,8 @@
         return {
           received: "受信",
           choice_detected: "番号判定済み",
-          paused: "自動化OFF",
-          ready_to_send: "送信準備済み",
+          paused: "自動送信OFF",
+          ready_to_send: "送信待ち",
           sent: "DM送信済み",
           dm_sent: "DM送信済み",
           error: "エラー",
@@ -1110,7 +1196,7 @@
       }
 
       function statusClass(value) {
-        return ["sent", "dm_sent", "success"].includes(value) ? "good" : ["error", "bad"].includes(value) ? "bad" : ["paused", "skipped", "outside_target"].includes(value) ? "warn" : "";
+        return ["sent", "dm_sent", "success"].includes(value) ? "good" : ["error", "bad"].includes(value) ? "bad" : ["paused", "skipped", "outside_target", "ready_to_send"].includes(value) ? "warn" : "";
       }
 
       function labelForEnv(key) {

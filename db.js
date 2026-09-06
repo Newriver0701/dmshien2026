@@ -449,10 +449,32 @@ export async function getMediaPosts() {
       p.last_synced_at as "lastSyncedAt",
       f.id as "flowId",
       f.name as "flowName",
-      f.enabled as "flowEnabled"
+      f.enabled as "flowEnabled",
+      coalesce(c.saved_comments, 0)::int as "savedCommentCount",
+      coalesce(t.task_count, 0)::int as "taskCount",
+      coalesce(t.ready_count, 0)::int as "readyTaskCount",
+      coalesce(t.sent_count, 0)::int as "sentTaskCount",
+      r.media_id is not null as "hasReading",
+      r.generated_at as "readingGeneratedAt",
+      r.updated_at as "readingUpdatedAt"
     from media_posts p
     left join media_flow_links l on l.media_id = p.media_id
     left join automation_flows f on f.id = l.flow_id
+    left join (
+      select media_id, count(*) as saved_comments
+      from media_comments
+      group by media_id
+    ) c on c.media_id = p.media_id
+    left join (
+      select
+        media_id,
+        count(*) as task_count,
+        count(*) filter (where status = 'ready_to_send') as ready_count,
+        count(*) filter (where status = 'sent') as sent_count
+      from automation_tasks
+      group by media_id
+    ) t on t.media_id = p.media_id
+    left join media_tarot_readings r on r.media_id = p.media_id
     order by p.timestamp desc nulls last, p.last_synced_at desc
   `);
 
@@ -481,10 +503,32 @@ export async function getMediaPost(mediaId) {
         p.last_synced_at as "lastSyncedAt",
         f.id as "flowId",
         f.name as "flowName",
-        f.enabled as "flowEnabled"
+        f.enabled as "flowEnabled",
+        coalesce(c.saved_comments, 0)::int as "savedCommentCount",
+        coalesce(t.task_count, 0)::int as "taskCount",
+        coalesce(t.ready_count, 0)::int as "readyTaskCount",
+        coalesce(t.sent_count, 0)::int as "sentTaskCount",
+        r.media_id is not null as "hasReading",
+        r.generated_at as "readingGeneratedAt",
+        r.updated_at as "readingUpdatedAt"
       from media_posts p
       left join media_flow_links l on l.media_id = p.media_id
       left join automation_flows f on f.id = l.flow_id
+      left join (
+        select media_id, count(*) as saved_comments
+        from media_comments
+        group by media_id
+      ) c on c.media_id = p.media_id
+      left join (
+        select
+          media_id,
+          count(*) as task_count,
+          count(*) filter (where status = 'ready_to_send') as ready_count,
+          count(*) filter (where status = 'sent') as sent_count
+        from automation_tasks
+        group by media_id
+      ) t on t.media_id = p.media_id
+      left join media_tarot_readings r on r.media_id = p.media_id
       where p.media_id = $1
     `,
     [mediaId]
@@ -1037,7 +1081,7 @@ export async function saveMediaTarotReading(reading) {
 export async function getStats() {
   if (!pool) return null;
 
-  const [flows, posts, processed, errors, webhook, tasks, events] = await Promise.all([
+  const [flows, posts, processed, errors, webhook, tasks, ready, events] = await Promise.all([
     pool.query("select count(*)::int as count from automation_flows where enabled = true"),
     pool.query("select count(*)::int as count from media_posts where active = true"),
     pool.query(
@@ -1075,6 +1119,7 @@ export async function getStats() {
         where (created_at at time zone 'Asia/Tokyo')::date = (now() at time zone 'Asia/Tokyo')::date
       `
     ),
+    pool.query("select count(*)::int as count from automation_tasks where status = 'ready_to_send'"),
     pool.query("select count(*)::int as count from events")
   ]);
 
@@ -1085,6 +1130,7 @@ export async function getStats() {
     errorsToday: errors.rows[0].count,
     webhookToday: webhook.rows[0].count,
     tasksToday: tasks.rows[0].count,
+    readyTasks: ready.rows[0].count,
     recentEvents: events.rows[0].count
   };
 }

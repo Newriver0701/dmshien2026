@@ -157,6 +157,7 @@ app.get("/api/status", requireAdmin, async (_req, res) => {
       errorsToday: recentEvents.filter((event) => event.status === "error").length,
       webhookToday: memoryWebhookToday.reduce((total, item) => total + item.count, 0),
       tasksToday: 0,
+      readyTasks: 0,
       recentEvents: recentEvents.length
     },
     webhookTodayByMedia: dbWebhookToday ?? memoryWebhookToday,
@@ -750,16 +751,8 @@ async function handleComment(comment) {
     return;
   }
 
-  if (!settings.automationEnabled) {
-    await updateCommentStatus(commentId, "received");
-    await updateAutomationTask(task?.taskId, { status: "paused", errorMessage: "完全自動化がOFFです" });
-    await addTaskStep(task?.taskId, "automation_enabled", "skipped", "完全自動化がOFFなので送信しません");
-    addEvent({ status: "ignored", reason: "automation_disabled", commentId, mediaId, choice });
-    return;
-  }
-
   try {
-    const result = await runAutomationTask(
+    const prepared = await prepareAutomationTask(
       {
         ...(task ?? {}),
         commentId,
@@ -770,7 +763,19 @@ async function handleComment(comment) {
         choice,
         choiceMethod: choiceResult.method
       },
-      { forceSend: true, settings, flow }
+      { settings, flow }
+    );
+
+    if (!settings.automationEnabled) {
+      await updateCommentStatus(commentId, "ready_to_send");
+      await addTaskStep(task?.taskId, "send_gate", "skipped", "自動送信OFFのため、最後の送信だけ待機しています");
+      addEvent({ status: "ready_to_send", reason: "manual_send_required", commentId, mediaId, choice });
+      return prepared.task;
+    }
+
+    const result = await runAutomationTask(
+      prepared.task,
+      { forceSend: true, settings, flow, prepared }
     );
     console.log(`sent reply: media=${mediaId} comment=${commentId} choice=${choice}`);
     return result;
@@ -790,6 +795,50 @@ async function handleComment(comment) {
 }
 
 async function runAutomationTask(task, options = {}) {
+  const prepared = options.prepared ?? (await prepareAutomationTask(task, options));
+  const { settings, flow, task: preparedTask, publicReply, privateReply } = prepared;
+  const taskId = preparedTask.taskId;
+
+  if (!options.forceSend && !settings.automationEnabled) {
+    await updateCommentStatus(preparedTask.commentId, "ready_to_send");
+    await addTaskStep(taskId, "send_gate", "skipped", "自動送信OFFのため、最後の送信だけ待機しています");
+    return getAutomationTask(taskId);
+  }
+
+  await replyToComment(preparedTask.commentId, publicReply);
+  await addTaskStep(taskId, "public_reply", "success", "公開コメント返信を送信しました", {
+    publicReply
+  });
+
+  await sendPrivateReply(preparedTask.commentId, privateReply);
+  await addTaskStep(taskId, "private_reply", "success", "Private Reply DMを送信しました", {
+    privateReply
+  });
+
+  processedComments.add(preparedTask.commentId);
+  await saveProcessedComment({
+    commentId: preparedTask.commentId,
+    mediaId: preparedTask.mediaId,
+    choice: preparedTask.choice,
+    username: preparedTask.username,
+    text: preparedTask.text,
+    publicReply,
+    privateReply,
+    status: "sent"
+  });
+  await updateCommentStatus(preparedTask.commentId, "dm_sent");
+  await updateAutomationTask(taskId, {
+    status: "sent",
+    publicReply,
+    privateReply,
+    errorMessage: null
+  });
+  addEvent({ status: "sent", commentId: preparedTask.commentId, mediaId: preparedTask.mediaId, choice: preparedTask.choice, marker: flow?.marker ?? null });
+
+  return getAutomationTask(taskId);
+}
+
+async function prepareAutomationTask(task, options = {}) {
   const settings = options.settings ?? (await getSettings());
   const taskId = task.taskId;
 
@@ -807,12 +856,6 @@ async function runAutomationTask(task, options = {}) {
 
   if (!task.choice) throw new Error("番号を判定できませんでした");
 
-  if (!options.forceSend && !settings.automationEnabled) {
-    await updateAutomationTask(taskId, { status: "paused", errorMessage: "完全自動化がOFFです" });
-    await addTaskStep(taskId, "automation_enabled", "skipped", "完全自動化がOFFなので送信しません");
-    return getAutomationTask(taskId);
-  }
-
   const flow = options.flow ?? (await getFlowForMedia(task.mediaId));
   if (!isTargetAllowed(flow, settings)) throw new Error("対象リールではありません");
   if (settings.targetMode === "marker_only" && flow?.enabled === false) throw new Error("フローが停止中です");
@@ -822,8 +865,8 @@ async function runAutomationTask(task, options = {}) {
   const privateReply = reading?.readings?.[task.choice];
   if (!privateReply) throw new Error(`${task.choice}番の鑑定文がありません`);
 
-  const publicReply = pickPublicReply(settings.publicReplyTemplates, task.choice);
-  await updateAutomationTask(taskId, {
+  const publicReply = task.publicReply || pickPublicReply(settings.publicReplyTemplates, task.choice);
+  const preparedTask = await updateAutomationTask(taskId, {
     status: "ready_to_send",
     publicReply,
     privateReply,
@@ -834,37 +877,18 @@ async function runAutomationTask(task, options = {}) {
     privateReply
   });
 
-  await replyToComment(task.commentId, publicReply);
-  await addTaskStep(taskId, "public_reply", "success", "公開コメント返信を送信しました", {
-    publicReply
-  });
-
-  await sendPrivateReply(task.commentId, privateReply);
-  await addTaskStep(taskId, "private_reply", "success", "Private Reply DMを送信しました", {
+  return {
+    settings,
+    flow,
+    task: preparedTask ?? {
+      ...task,
+      status: "ready_to_send",
+      publicReply,
+      privateReply
+    },
+    publicReply,
     privateReply
-  });
-
-  processedComments.add(task.commentId);
-  await saveProcessedComment({
-    commentId: task.commentId,
-    mediaId: task.mediaId,
-    choice: task.choice,
-    username: task.username,
-    text: task.text,
-    publicReply,
-    privateReply,
-    status: "sent"
-  });
-  await updateCommentStatus(task.commentId, "dm_sent");
-  await updateAutomationTask(taskId, {
-    status: "sent",
-    publicReply,
-    privateReply,
-    errorMessage: null
-  });
-  addEvent({ status: "sent", commentId: task.commentId, mediaId: task.mediaId, choice: task.choice, marker: flow?.marker ?? null });
-
-  return getAutomationTask(taskId);
+  };
 }
 
 async function detectChoice(text, settings, taskId = null) {
