@@ -455,6 +455,7 @@ export async function getMediaPosts() {
       coalesce(t.ready_count, 0)::int as "readyTaskCount",
       coalesce(t.sent_count, 0)::int as "sentTaskCount",
       r.media_id is not null as "hasReading",
+      coalesce((r.readings ? '1') and (r.readings ? '2') and (r.readings ? '3'), false) as "readingComplete",
       r.generated_at as "readingGeneratedAt",
       r.updated_at as "readingUpdatedAt"
     from media_posts p
@@ -509,6 +510,7 @@ export async function getMediaPost(mediaId) {
         coalesce(t.ready_count, 0)::int as "readyTaskCount",
         coalesce(t.sent_count, 0)::int as "sentTaskCount",
         r.media_id is not null as "hasReading",
+        coalesce((r.readings ? '1') and (r.readings ? '2') and (r.readings ? '3'), false) as "readingComplete",
         r.generated_at as "readingGeneratedAt",
         r.updated_at as "readingUpdatedAt"
       from media_posts p

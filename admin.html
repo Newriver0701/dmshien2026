@@ -906,7 +906,7 @@
       function mediaCard(item) {
         const image = item.thumbnailUrl || item.mediaUrl || "";
         const target = mediaTarget(item);
-        const needsReading = Number(item.savedCommentCount ?? 0) > 0 && !item.hasReading;
+        const readingStatus = mediaReadingStatus(item);
         return `
           <div class="item media-item" data-media-id="${escapeHtml(item.mediaId)}">
             ${image ? `<img class="thumb" src="${escapeHtml(image)}" alt="">` : `<div class="thumb"></div>`}
@@ -915,7 +915,7 @@
                 <strong>${escapeHtml(item.mediaProductType || item.mediaType || "投稿")}</strong>
                 <div class="row-actions">
                   <span class="badge ${target.allowed ? "good" : ""}">${target.label}</span>
-                  <span class="badge ${item.hasReading ? "good" : needsReading ? "warn" : ""}">${item.hasReading ? "鑑定あり" : needsReading ? "鑑定未生成" : "鑑定なし"}</span>
+                  <span class="badge ${readingStatus.className}">${readingStatus.label}</span>
                 </div>
               </div>
               <p><code>${escapeHtml(item.mediaId)}</code></p>
@@ -929,7 +929,8 @@
       function renderPostDetail(item, reading, tasks) {
         const image = item.thumbnailUrl || item.mediaUrl || "";
         const target = mediaTarget(item);
-        const needsReading = Number(item.savedCommentCount ?? 0) > 0 && !reading;
+        const readingStatus = mediaReadingStatus({ ...item, hasReading: Boolean(reading), readingComplete: readingComplete(reading) });
+        const needsReading = Number(item.savedCommentCount ?? 0) > 0 && !readingStatus.complete;
         document.getElementById("post-detail").innerHTML = `
           <div class="media-item item">
             ${image ? `<img class="thumb" src="${escapeHtml(image)}" alt="">` : `<div class="thumb"></div>`}
@@ -938,7 +939,7 @@
                 <h3>${escapeHtml(item.flowName || "自動化なし")}</h3>
                 <div class="row-actions">
                   <span class="badge ${target.allowed ? "good" : ""}">${target.label}</span>
-                  <span class="badge ${reading ? "good" : needsReading ? "warn" : ""}">${reading ? "鑑定あり" : needsReading ? "コメントあり・鑑定未生成" : "鑑定なし"}</span>
+                  <span class="badge ${readingStatus.className}">${readingStatus.label}</span>
                 </div>
               </div>
               <div class="mini-metrics">
@@ -953,7 +954,7 @@
             </div>
           </div>
         `;
-        document.getElementById("post-reading").innerHTML = readingBlock(reading, needsReading);
+        document.getElementById("post-reading").innerHTML = readingBlock(reading, readingStatus, needsReading);
         document.getElementById("post-tasks").innerHTML =
           tasks.map(taskCard).join("") || `<p class="muted">この投稿のタスクはまだありません。</p>`;
         document.querySelectorAll("#post-tasks [data-task-id]").forEach((el) => {
@@ -961,7 +962,7 @@
         });
       }
 
-      function readingBlock(reading, needsReading) {
+      function readingBlock(reading, readingStatus, needsReading) {
         if (!reading) {
           return `
             <div class="item ${needsReading ? "" : "dim"}">
@@ -978,7 +979,7 @@
           <div class="item">
             <div class="line">
               <strong>投稿別の鑑定文</strong>
-              <span class="badge good">生成済み</span>
+              <span class="badge ${readingStatus.className}">${readingStatus.label}</span>
             </div>
             <p class="muted">テーマ: ${escapeHtml(reading.theme || "-")}</p>
             <p class="muted">生成: ${escapeHtml(formatDate(reading.generatedAt))}</p>
@@ -1187,6 +1188,24 @@
           allowed: true,
           label: item.active ? "マーカー対象" : "全投稿対象"
         };
+      }
+
+      function readingComplete(reading) {
+        return Boolean(reading?.readings?.["1"] && reading?.readings?.["2"] && reading?.readings?.["3"]);
+      }
+
+      function mediaReadingStatus(item) {
+        const hasComments = Number(item.savedCommentCount ?? 0) > 0;
+        if (item.hasReading && item.readingComplete !== false) {
+          return { label: "鑑定あり", className: "good", complete: true };
+        }
+        if (item.hasReading) {
+          return { label: "一部生成失敗", className: "bad", complete: false };
+        }
+        if (hasComments) {
+          return { label: "鑑定未生成", className: "warn", complete: false };
+        }
+        return { label: "鑑定なし", className: "", complete: false };
       }
 
       function commentIdentity(comment) {

@@ -1012,7 +1012,12 @@ jsonのみで返してください。`
 }
 
 async function getOrCreateMediaReading(media, taskId = null, settings = null) {
-  const theme = extractTheme(media?.caption ?? "") || "今あなたに必要なメッセージ";
+  const theme = extractTheme(media?.caption ?? "");
+  if (!theme) {
+    await addTaskStep(taskId, "reading_theme", "error", "テーマ未設定のため鑑定文を生成できません");
+    throw new Error("テーマ未設定のため鑑定文を生成できません");
+  }
+
   const hash = hashText(theme);
   const existing = media?.id || media?.mediaId ? await getMediaTarotReading(media.id ?? media.mediaId) : null;
 
@@ -1040,20 +1045,51 @@ async function generateAndSaveReading(media, taskId = null) {
   const mediaId = media?.mediaId ?? media?.id;
   if (!mediaId) throw new Error("mediaId is required for reading generation");
 
-  const theme = extractTheme(media?.caption ?? "") || "今あなたに必要なメッセージ";
+  const theme = extractTheme(media?.caption ?? "");
+  if (!theme) {
+    await addTaskStep(taskId, "reading_theme", "error", "テーマ未設定のため鑑定文を生成できません");
+    throw new Error("テーマ未設定のため鑑定文を生成できません");
+  }
 
   const cards = pickTarotCards(3);
-  const rawText = await generateReadingWithAi(theme, cards);
-  const readings = splitReadingText(rawText);
+  const readings = {};
+  const cardMap = {
+    "1": cards[0],
+    "2": cards[1],
+    "3": cards[2]
+  };
+
+  for (const choice of ["1", "2", "3"]) {
+    await addTaskStep(taskId, `reading_generate_${choice}`, "started", `${choice}番の鑑定文を生成します`, {
+      choice,
+      card: cardMap[choice]
+    });
+
+    try {
+      readings[choice] = await generateSingleReadingWithAi({
+        theme,
+        choice,
+        card: cardMap[choice]
+      });
+      await addTaskStep(taskId, `reading_generate_${choice}`, "success", `${choice}番の鑑定文を生成しました`, {
+        choice,
+        card: cardMap[choice]
+      });
+    } catch (error) {
+      await addTaskStep(taskId, `reading_generate_${choice}`, "error", `${choice}番の鑑定文生成に失敗しました: ${errorMessage(error)}`, {
+        choice,
+        card: cardMap[choice]
+      });
+      throw error;
+    }
+  }
+
+  const rawText = ["1", "2", "3"].map((choice) => readings[choice]).join("\n\n");
   const reading = await saveMediaTarotReading({
     mediaId,
     theme,
     captionHash: hashText(theme),
-    cards: {
-      "1": cards[0],
-      "2": cards[1],
-      "3": cards[2]
-    },
+    cards: cardMap,
     readings,
     rawText
   });
@@ -1067,13 +1103,14 @@ async function generateAndSaveReading(media, taskId = null) {
     mediaId,
     theme,
     captionHash: hashText(theme),
-    cards: { "1": cards[0], "2": cards[1], "3": cards[2] },
+    cards: cardMap,
     readings,
     rawText
   };
 }
 
-async function generateReadingWithAi(theme, cards) {
+async function generateSingleReadingWithAi({ theme, choice, card }) {
+  const mark = choiceMark(choice);
   return deepseekText([
     {
       role: "system",
@@ -1085,24 +1122,17 @@ async function generateReadingWithAi(theme, cards) {
       content: `【入力（テーマ）】
 theme: "${theme}"
 
+【選択番号】
+${mark}
+
 【カード】
-① ${cards[0]}
-② ${cards[1]}
-③ ${cards[2]}
+${card}
 
 【出力形式】
-以下の3つを順番通りにそのまま出力してください。
+以下の形式だけをそのまま出力してください。
 
-🔮①を選んだあなたへ
-－${cards[0]}－
-本文（8〜12行・改行あり）
-
-🔮②を選んだあなたへ
-－${cards[1]}－
-本文（8〜12行・改行あり）
-
-🔮③を選んだあなたへ
-－${cards[2]}－
+🔮${mark}を選んだあなたへ
+－${card}－
 本文（8〜12行・改行あり）
 
 【紫炎トーン】
@@ -1116,9 +1146,9 @@ theme: "${theme}"
 【禁止事項】
 CTA、占い解説、アドバイス口調、箇条書き、説明文、JSON、構造化出力。
 
-各本文は約250〜350文字。①②③と🔮は必ず入れてください。`
+本文は約250〜350文字。${mark}と🔮は必ず入れてください。`
     }
-  ], { maxTokens: 1800 });
+  ], { maxTokens: 700 });
 }
 
 async function deepseekJson(messages, options = {}) {
@@ -1383,30 +1413,12 @@ function isTargetAllowed(flow, settings = {}) {
   return settings.targetMode === "all_posts" || Boolean(flow);
 }
 
-function splitReadingText(rawText) {
-  const text = String(rawText ?? "").trim();
-  const markers = [
-    { choice: "1", regex: /🔮\s*①を選んだあなたへ/ },
-    { choice: "2", regex: /🔮\s*②を選んだあなたへ/ },
-    { choice: "3", regex: /🔮\s*③を選んだあなたへ/ }
-  ].map((marker) => {
-    const match = marker.regex.exec(text);
-    return match ? { ...marker, index: match.index } : null;
-  });
-
-  if (markers.some((marker) => !marker)) {
-    throw new Error("鑑定文の分割に失敗しました。🔮①/🔮②/🔮③ が必要です。");
-  }
-
-  const sorted = markers.sort((a, b) => a.index - b.index);
-  const readings = {};
-  for (let index = 0; index < sorted.length; index += 1) {
-    const current = sorted[index];
-    const next = sorted[index + 1];
-    readings[current.choice] = text.slice(current.index, next?.index ?? text.length).trim();
-  }
-
-  return readings;
+function choiceMark(choice) {
+  return {
+    "1": "①",
+    "2": "②",
+    "3": "③"
+  }[choice] ?? choice;
 }
 
 function normalizeComment(comment) {
