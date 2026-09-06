@@ -634,21 +634,6 @@
                   <button id="ig-refresh-token">Instagram長期Tokenを更新</button>
                   <button id="copy-ig-token">長期Tokenをコピー</button>
                 </div>
-                <details>
-                  <summary class="muted">Facebookログイン方式に戻す時の補助</summary>
-                  <div class="field">
-                    <label for="short-token">Facebook方式の短期User Token</label>
-                    <input id="short-token" placeholder="Facebook Login方式に戻す時だけ使います" />
-                  </div>
-                  <div class="field">
-                    <label for="long-token">Facebook方式の長期User Token</label>
-                    <input id="long-token" placeholder="Facebook方式の交換後にここへ入ります" />
-                  </div>
-                  <div class="row-actions">
-                    <button id="exchange-token">Facebook長期Tokenに交換</button>
-                    <button id="load-page-tokens">Facebook Page Tokenを取得</button>
-                  </div>
-                </details>
                 <div class="result" id="token-result">まだ実行していません。</div>
               </section>
             </div>
@@ -703,8 +688,6 @@
       document.getElementById("ig-exchange-token").addEventListener("click", exchangeInstagramToken);
       document.getElementById("ig-refresh-token").addEventListener("click", refreshInstagramToken);
       document.getElementById("copy-ig-token").addEventListener("click", copyInstagramToken);
-      document.getElementById("exchange-token").addEventListener("click", exchangeToken);
-      document.getElementById("load-page-tokens").addEventListener("click", loadPageTokens);
 
       refreshAll();
       setInterval(loadStatus, 10000);
@@ -856,21 +839,6 @@
         }
       }
 
-      async function exchangeToken() {
-        setBusy("exchange-token", true);
-        try {
-          const data = await post("/api/exchange-token", {
-            shortToken: document.getElementById("short-token").value
-          });
-          if (data.longUserToken) document.getElementById("long-token").value = data.longUserToken;
-          showToken(data);
-        } catch (error) {
-          showTokenError(error);
-        } finally {
-          setBusy("exchange-token", false);
-        }
-      }
-
       async function exchangeInstagramToken() {
         setBusy("ig-exchange-token", true);
         try {
@@ -903,19 +871,6 @@
 
       function copyInstagramToken() {
         navigator.clipboard.writeText(document.getElementById("ig-long-token").value);
-      }
-
-      async function loadPageTokens() {
-        setBusy("load-page-tokens", true);
-        try {
-          showToken(await post("/api/page-tokens", {
-            longUserToken: document.getElementById("long-token").value
-          }));
-        } catch (error) {
-          showTokenError(error);
-        } finally {
-          setBusy("load-page-tokens", false);
-        }
       }
 
       async function toggleFlow(flowId, enabled) {
@@ -1278,12 +1233,9 @@
           ADMIN_AUTH_ENABLED: "管理画面認証",
           ADMIN_TOKEN: "管理画面トークン",
           DATABASE_URL: "Postgres接続",
-          APP_ID: "MetaアプリID",
           APP_SECRET: "Metaアプリシークレット",
-          API_MODE: "API方式",
           GRAPH_BASE_URL: "API接続先",
-          GRAPH_API_VERSION: "APIバージョン",
-          FACEBOOK_GRAPH_BASE_URL: "Facebook補助API接続先"
+          GRAPH_API_VERSION: "APIバージョン"
         }[key] || key;
       }
 

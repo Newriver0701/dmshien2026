@@ -41,13 +41,10 @@ const {
   ADMIN_TOKEN,
   ADMIN_AUTH_ENABLED = "false",
   DATABASE_URL,
-  APP_ID,
   APP_SECRET,
   IG_USERNAME,
-  API_MODE = "instagram",
   GRAPH_BASE_URL = "https://graph.instagram.com",
-  GRAPH_API_VERSION = "v26.0",
-  FACEBOOK_GRAPH_BASE_URL = "https://graph.facebook.com"
+  GRAPH_API_VERSION = "v26.0"
 } = process.env;
 
 const processedComments = new Set();
@@ -123,13 +120,10 @@ app.get("/api/status", requireAdmin, async (_req, res) => {
       ADMIN_TOKEN: Boolean(ADMIN_TOKEN),
       ADMIN_AUTH_ENABLED,
       DATABASE_URL: Boolean(DATABASE_URL),
-      APP_ID: Boolean(APP_ID),
       APP_SECRET: Boolean(APP_SECRET),
       IG_USERNAME: Boolean(IG_USERNAME),
-      API_MODE,
       GRAPH_BASE_URL,
-      GRAPH_API_VERSION,
-      FACEBOOK_GRAPH_BASE_URL
+      GRAPH_API_VERSION
     },
     database: {
       ...getDatabaseStatus()
@@ -193,56 +187,6 @@ app.put("/api/flows/:flowId/replies", requireAdmin, async (req, res) => {
     const flow = await updateFlowChoices(req.params.flowId, choices);
     mediaFlowCache.clear();
     res.json({ ok: true, flow: normalizeFlow(flow) });
-  } catch (error) {
-    res.status(500).json({ ok: false, error: errorMessage(error) });
-  }
-});
-
-app.post("/api/exchange-token", requireAdmin, async (req, res) => {
-  try {
-    const shortToken = String(req.body?.shortToken ?? "").trim();
-    if (!shortToken) return res.status(400).json({ ok: false, error: "shortToken is required" });
-    if (!APP_ID || !APP_SECRET) {
-      return res.status(400).json({
-        ok: false,
-        error: "APP_ID and APP_SECRET must be set in Railway Variables"
-      });
-    }
-
-    const url = new URL(`${FACEBOOK_GRAPH_BASE_URL}/${GRAPH_API_VERSION}/oauth/access_token`);
-    url.searchParams.set("grant_type", "fb_exchange_token");
-    url.searchParams.set("client_id", APP_ID);
-    url.searchParams.set("client_secret", APP_SECRET);
-    url.searchParams.set("fb_exchange_token", shortToken);
-
-    const token = await fetchJson(url);
-    res.json({
-      ok: true,
-      longUserToken: token.access_token,
-      tokenType: token.token_type,
-      expiresIn: token.expires_in
-    });
-  } catch (error) {
-    res.status(500).json({ ok: false, error: errorMessage(error) });
-  }
-});
-
-app.post("/api/page-tokens", requireAdmin, async (req, res) => {
-  try {
-    const longUserToken = String(req.body?.longUserToken ?? "").trim();
-    if (!longUserToken) {
-      return res.status(400).json({ ok: false, error: "longUserToken is required" });
-    }
-
-    const url = new URL(`${FACEBOOK_GRAPH_BASE_URL}/${GRAPH_API_VERSION}/me/accounts`);
-    url.searchParams.set("fields", "name,id,access_token,instagram_business_account");
-    url.searchParams.set("access_token", longUserToken);
-
-    const pages = await fetchJson(url);
-    res.json({
-      ok: true,
-      pages: pages.data ?? []
-    });
   } catch (error) {
     res.status(500).json({ ok: false, error: errorMessage(error) });
   }

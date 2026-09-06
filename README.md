@@ -27,14 +27,11 @@ ADMIN_AUTH_ENABLED=false
 ADMIN_TOKEN=
 DATABASE_URL=Railway Postgresを追加すると自動で入ります
 APP_SECRET=Metaアプリシークレット
-API_MODE=instagram
 GRAPH_BASE_URL=https://graph.instagram.com
 GRAPH_API_VERSION=v26.0
-FACEBOOK_GRAPH_BASE_URL=https://graph.facebook.com
 ```
 
 `APP_SECRET` はInstagram短期Tokenを長期Tokenに交換する時に使います。
-`APP_ID` はFacebookログイン方式の補助Token取得を使う時だけ入れます。
 
 4. Meta Developerの `Use Cases -> Customize -> API setup with Instagram Login` でWebhook URLに設定
 
@@ -82,7 +79,6 @@ https://YOUR-RAILWAY-DOMAIN.up.railway.app/admin
 - 今日のDM送信数とエラー数
 - 今日Webhookで受けたコメント数
 - 今日Webhookで受けたコメントの投稿別サマリー
-- Facebookログイン方式に戻す時の補助Token取得
 - 受信したコメント、無視した理由、送信結果、エラー
 
 初期状態では管理画面認証は無効です。
@@ -101,8 +97,7 @@ https://YOUR-RAILWAY-DOMAIN.up.railway.app/admin?token=ADMIN_TOKENの値
 
 ## Instagramログイン方式
 
-この版のメイン運用はInstagramログイン方式です。
-Facebook Page Access Tokenとは混ぜないでください。`IG_USER_ID` と `ACCESS_TOKEN` は、同じInstagramログイン画面で取得したAccount IDとAccess Tokenの組み合わせにします。
+この版はInstagramログイン方式だけで動かします。`IG_USER_ID` と `ACCESS_TOKEN` は、同じInstagramログイン画面で取得したAccount IDとAccess Tokenの組み合わせにします。
 
 1. Meta App Dashboardで `Use Cases -> Customize`
 2. `API setup with Instagram Login` を開く
@@ -119,18 +114,6 @@ Facebook Page Access Tokenとは混ぜないでください。`IG_USER_ID` と `
 
 長期Tokenは約60日で期限切れします。
 管理画面の「Instagram長期Tokenを更新」で更新し、返ってきた `accessToken` をRailwayの `ACCESS_TOKEN` に入れ直してください。
-
-## Facebookログイン方式の補助
-
-管理画面には、短期Facebook User Tokenを長期化してPage Tokenを取る補助機能も残しています。
-ただしInstagramログイン方式で運用する場合は使いません。
-
-この補助機能を使う場合だけ、Railway Variablesに以下も入れてください。
-
-```text
-APP_ID=MetaアプリID
-APP_SECRET=Metaアプリシークレット
-```
 
 トークンは画面に表示するだけで、Postgresには保存しません。
 
