@@ -3,6 +3,16 @@ import pg from "pg";
 const { Pool } = pg;
 
 let disabledReason = "";
+export const DEFAULT_SETTINGS = {
+  automationEnabled: false,
+  aiChoiceEnabled: true,
+  aiReadingEnabled: true,
+  publicReplyTemplates: [
+    "{choice}を選びましたね。鑑定結果をDMに送りました。",
+    "{choice}ですね。カードからのメッセージをDMに送っています。",
+    "{choice}番ですね。静かな鑑定結果をDMへお届けしました。"
+  ]
+};
 
 let pool = process.env.DATABASE_URL
   ? new Pool({
@@ -109,15 +119,100 @@ export async function initDatabase(flows = []) {
         message text,
         created_at timestamptz not null default now()
       );
+
+      create table if not exists app_settings (
+        key text primary key,
+        value jsonb not null,
+        updated_at timestamptz not null default now()
+      );
+
+      create table if not exists media_tarot_readings (
+        media_id text primary key references media_posts(media_id) on delete cascade,
+        theme text not null,
+        caption_hash text not null,
+        cards jsonb not null,
+        readings jsonb not null,
+        raw_text text,
+        error_message text,
+        generated_at timestamptz not null default now(),
+        updated_at timestamptz not null default now()
+      );
+
+      create table if not exists automation_tasks (
+        id bigserial primary key,
+        comment_id text unique,
+        media_id text,
+        username text,
+        comment_text text,
+        sanitized_text text,
+        choice text,
+        choice_method text,
+        status text not null default 'received',
+        public_reply text,
+        private_reply text,
+        error_message text,
+        created_at timestamptz not null default now(),
+        updated_at timestamptz not null default now()
+      );
+
+      create table if not exists automation_task_steps (
+        id bigserial primary key,
+        task_id bigint references automation_tasks(id) on delete cascade,
+        step_key text not null,
+        status text not null,
+        message text,
+        metadata jsonb,
+        created_at timestamptz not null default now()
+      );
     `);
 
     await pool.query(`
+      alter table media_posts add column if not exists media_type text;
+      alter table media_posts add column if not exists media_product_type text;
+      alter table media_posts add column if not exists media_url text;
+      alter table media_posts add column if not exists thumbnail_url text;
+      alter table media_posts add column if not exists permalink text;
+      alter table media_posts add column if not exists comments_count integer;
+      alter table media_posts add column if not exists like_count integer;
+      alter table media_posts add column if not exists matched_marker text;
+      alter table media_posts add column if not exists active boolean not null default false;
+      alter table media_posts add column if not exists first_seen_at timestamptz not null default now();
+      alter table media_posts add column if not exists last_synced_at timestamptz not null default now();
+
+      alter table media_flow_links add column if not exists marker text;
+      alter table media_flow_links add column if not exists active boolean not null default true;
+      alter table media_flow_links add column if not exists linked_at timestamptz not null default now();
+      alter table media_flow_links add column if not exists updated_at timestamptz not null default now();
+
+      alter table media_comments add column if not exists username text;
+      alter table media_comments add column if not exists user_id text;
+      alter table media_comments add column if not exists comment_text text;
+      alter table media_comments add column if not exists choice text;
+      alter table media_comments add column if not exists like_count integer;
+      alter table media_comments add column if not exists hidden boolean;
+      alter table media_comments add column if not exists is_owner_comment boolean not null default false;
+      alter table media_comments add column if not exists automation_status text not null default 'unprocessed';
+      alter table media_comments add column if not exists error_message text;
+      alter table media_comments add column if not exists created_at timestamptz;
+      alter table media_comments add column if not exists first_seen_at timestamptz not null default now();
+      alter table media_comments add column if not exists updated_at timestamptz not null default now();
+
       alter table processed_comments add column if not exists public_reply text;
       alter table processed_comments add column if not exists private_reply text;
       alter table processed_comments add column if not exists status text not null default 'sent';
       alter table processed_comments add column if not exists error_message text;
+
+      alter table events add column if not exists reason text;
+      alter table events add column if not exists media_id text;
+      alter table events add column if not exists comment_id text;
+      alter table events add column if not exists choice text;
+      alter table events add column if not exists username text;
+      alter table events add column if not exists comment_text text;
+      alter table events add column if not exists marker text;
+      alter table events add column if not exists message text;
     `);
 
+    await seedSettings();
     await seedFlows(flows);
     return true;
   } catch (error) {
@@ -128,6 +223,19 @@ export async function initDatabase(flows = []) {
     pool = null;
     return false;
   }
+}
+
+async function seedSettings() {
+  if (!pool) return;
+
+  await pool.query(
+    `
+      insert into app_settings (key, value, updated_at)
+      values ('main', $1, now())
+      on conflict (key) do nothing
+    `,
+    [JSON.stringify(DEFAULT_SETTINGS)]
+  );
 }
 
 async function seedFlows(flows) {
@@ -427,7 +535,7 @@ export async function upsertMediaComment(comment) {
 }
 
 export async function updateCommentStatus(commentId, status, errorMessage = null) {
-  if (!pool) return;
+  if (!pool || !commentId) return;
 
   await pool.query(
     `
@@ -644,10 +752,291 @@ export async function getWebhookTodaySummary(limit = 20) {
   return result.rows;
 }
 
+export async function getSettings() {
+  if (!pool) return { ...DEFAULT_SETTINGS };
+
+  const result = await pool.query("select value from app_settings where key = 'main'");
+  return {
+    ...DEFAULT_SETTINGS,
+    ...(result.rows[0]?.value ?? {})
+  };
+}
+
+export async function updateSettings(settings) {
+  const merged = {
+    ...(await getSettings()),
+    ...settings
+  };
+
+  if (!pool) return merged;
+
+  const result = await pool.query(
+    `
+      insert into app_settings (key, value, updated_at)
+      values ('main', $1, now())
+      on conflict (key) do update set
+        value = excluded.value,
+        updated_at = now()
+      returning value
+    `,
+    [JSON.stringify(merged)]
+  );
+
+  return {
+    ...DEFAULT_SETTINGS,
+    ...(result.rows[0]?.value ?? {})
+  };
+}
+
+export async function createAutomationTask(task) {
+  if (!pool) return null;
+
+  const result = await pool.query(
+    `
+      insert into automation_tasks (
+        comment_id, media_id, username, comment_text, sanitized_text,
+        choice, choice_method, status, public_reply, private_reply, error_message,
+        created_at, updated_at
+      )
+      values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, now(), now())
+      on conflict (comment_id) do update set
+        media_id = coalesce(excluded.media_id, automation_tasks.media_id),
+        username = coalesce(nullif(excluded.username, ''), automation_tasks.username),
+        comment_text = excluded.comment_text,
+        sanitized_text = excluded.sanitized_text,
+        choice = coalesce(excluded.choice, automation_tasks.choice),
+        choice_method = coalesce(excluded.choice_method, automation_tasks.choice_method),
+        status = excluded.status,
+        updated_at = now()
+      returning ${taskSelectFields()}
+    `,
+    [
+      task.commentId ?? null,
+      task.mediaId ?? null,
+      task.username ?? null,
+      task.text ?? "",
+      task.sanitizedText ?? "",
+      task.choice ?? null,
+      task.choiceMethod ?? null,
+      task.status ?? "received",
+      task.publicReply ?? null,
+      task.privateReply ?? null,
+      task.errorMessage ?? null
+    ]
+  );
+
+  return result.rows[0] ?? null;
+}
+
+export async function updateAutomationTask(taskId, patch) {
+  if (!pool || !taskId) return null;
+
+  const fields = [];
+  const values = [];
+  const map = {
+    mediaId: "media_id",
+    username: "username",
+    text: "comment_text",
+    sanitizedText: "sanitized_text",
+    choice: "choice",
+    choiceMethod: "choice_method",
+    status: "status",
+    publicReply: "public_reply",
+    privateReply: "private_reply",
+    errorMessage: "error_message"
+  };
+
+  for (const [key, column] of Object.entries(map)) {
+    if (Object.hasOwn(patch, key)) {
+      values.push(patch[key]);
+      fields.push(`${column} = $${values.length}`);
+    }
+  }
+
+  if (fields.length === 0) return getAutomationTask(taskId);
+
+  values.push(taskId);
+  const result = await pool.query(
+    `
+      update automation_tasks
+      set ${fields.join(", ")}, updated_at = now()
+      where id = $${values.length}
+      returning ${taskSelectFields()}
+    `,
+    values
+  );
+
+  return result.rows[0] ?? null;
+}
+
+export async function addTaskStep(taskId, stepKey, status, message = "", metadata = null) {
+  if (!pool || !taskId) return null;
+
+  await pool.query(
+    `
+      insert into automation_task_steps (task_id, step_key, status, message, metadata)
+      values ($1, $2, $3, $4, $5)
+    `,
+    [taskId, stepKey, status, message, metadata ? JSON.stringify(metadata) : null]
+  );
+}
+
+export async function getAutomationTasks(limit = 100) {
+  if (!pool) return null;
+
+  const result = await pool.query(
+    `
+      select
+        ${taskSelectFields("t")},
+        p.caption,
+        p.thumbnail_url as "thumbnailUrl",
+        p.media_url as "mediaUrl",
+        p.active as "mediaActive",
+        p.matched_marker as "matchedMarker"
+      from automation_tasks t
+      left join media_posts p on p.media_id = t.media_id
+      order by t.created_at desc
+      limit $1
+    `,
+    [limit]
+  );
+
+  return result.rows;
+}
+
+export async function getAutomationTask(taskId) {
+  if (!pool) return null;
+
+  const result = await pool.query(
+    `
+      select
+        ${taskSelectFields("t")},
+        p.caption,
+        p.thumbnail_url as "thumbnailUrl",
+        p.media_url as "mediaUrl",
+        p.active as "mediaActive",
+        p.matched_marker as "matchedMarker"
+      from automation_tasks t
+      left join media_posts p on p.media_id = t.media_id
+      where t.id = $1
+    `,
+    [taskId]
+  );
+
+  return result.rows[0] ?? null;
+}
+
+export async function getAutomationTaskSteps(taskId) {
+  if (!pool) return null;
+
+  const result = await pool.query(
+    `
+      select
+        id as "stepId",
+        task_id as "taskId",
+        step_key as "stepKey",
+        status,
+        message,
+        metadata,
+        created_at as "createdAt"
+      from automation_task_steps
+      where task_id = $1
+      order by id asc
+    `,
+    [taskId]
+  );
+
+  return result.rows;
+}
+
+export async function getAutomationTasksForMedia(mediaId, limit = 30) {
+  if (!pool) return null;
+
+  const result = await pool.query(
+    `
+      select ${taskSelectFields()}
+      from automation_tasks
+      where media_id = $1
+      order by created_at desc
+      limit $2
+    `,
+    [mediaId, limit]
+  );
+
+  return result.rows;
+}
+
+export async function getMediaTarotReading(mediaId) {
+  if (!pool) return null;
+
+  const result = await pool.query(
+    `
+      select
+        media_id as "mediaId",
+        theme,
+        caption_hash as "captionHash",
+        cards,
+        readings,
+        raw_text as "rawText",
+        error_message as "errorMessage",
+        generated_at as "generatedAt",
+        updated_at as "updatedAt"
+      from media_tarot_readings
+      where media_id = $1
+    `,
+    [mediaId]
+  );
+
+  return result.rows[0] ?? null;
+}
+
+export async function saveMediaTarotReading(reading) {
+  if (!pool) return null;
+
+  const result = await pool.query(
+    `
+      insert into media_tarot_readings (
+        media_id, theme, caption_hash, cards, readings, raw_text, error_message,
+        generated_at, updated_at
+      )
+      values ($1, $2, $3, $4, $5, $6, $7, now(), now())
+      on conflict (media_id) do update set
+        theme = excluded.theme,
+        caption_hash = excluded.caption_hash,
+        cards = excluded.cards,
+        readings = excluded.readings,
+        raw_text = excluded.raw_text,
+        error_message = excluded.error_message,
+        updated_at = now()
+      returning
+        media_id as "mediaId",
+        theme,
+        caption_hash as "captionHash",
+        cards,
+        readings,
+        raw_text as "rawText",
+        error_message as "errorMessage",
+        generated_at as "generatedAt",
+        updated_at as "updatedAt"
+    `,
+    [
+      reading.mediaId,
+      reading.theme,
+      reading.captionHash,
+      JSON.stringify(reading.cards),
+      JSON.stringify(reading.readings),
+      reading.rawText ?? null,
+      reading.errorMessage ?? null
+    ]
+  );
+
+  return result.rows[0] ?? null;
+}
+
 export async function getStats() {
   if (!pool) return null;
 
-  const [flows, posts, processed, errors, webhook, events] = await Promise.all([
+  const [flows, posts, processed, errors, webhook, tasks, events] = await Promise.all([
     pool.query("select count(*)::int as count from automation_flows where enabled = true"),
     pool.query("select count(*)::int as count from media_posts where active = true"),
     pool.query(
@@ -678,6 +1067,13 @@ export async function getStats() {
           and coalesce(reason, '') <> 'user_info_missing'
       `
     ),
+    pool.query(
+      `
+        select count(*)::int as count
+        from automation_tasks
+        where (created_at at time zone 'Asia/Tokyo')::date = (now() at time zone 'Asia/Tokyo')::date
+      `
+    ),
     pool.query("select count(*)::int as count from events")
   ]);
 
@@ -687,6 +1083,27 @@ export async function getStats() {
     sentToday: processed.rows[0].count,
     errorsToday: errors.rows[0].count,
     webhookToday: webhook.rows[0].count,
+    tasksToday: tasks.rows[0].count,
     recentEvents: events.rows[0].count
   };
+}
+
+function taskSelectFields(alias = "") {
+  const prefix = alias ? `${alias}.` : "";
+  return `
+    ${prefix}id as "taskId",
+    ${prefix}comment_id as "commentId",
+    ${prefix}media_id as "mediaId",
+    ${prefix}username,
+    ${prefix}comment_text as text,
+    ${prefix}sanitized_text as "sanitizedText",
+    ${prefix}choice,
+    ${prefix}choice_method as "choiceMethod",
+    ${prefix}status,
+    ${prefix}public_reply as "publicReply",
+    ${prefix}private_reply as "privateReply",
+    ${prefix}error_message as "errorMessage",
+    ${prefix}created_at as "createdAt",
+    ${prefix}updated_at as "updatedAt"
+  `;
 }

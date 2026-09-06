@@ -1,151 +1,74 @@
 # Instagram Tarot Auto Simple
 
-Instagramログイン方式で動かす、GitHubとRailwayに上げやすい最小版です。
+Instagramログイン方式だけで動かす、Pabbly代替のDM自動化ツールです。
 
-## ファイル
+Webhookでコメントを受け取り、番号判定、タスク履歴作成、公開返信、Private Reply DM送信までRailway上で完結します。完全自動化は初期OFFなので、まずは受信ログと判定だけ確認できます。
 
-- `server.js`: Webhook受信とMeta APIへの返信
-- `flows.js`: 初期フロー、キャプション目印、公開返信、DM鑑定文
-- `db.js`: Postgres保存、テーブル作成、同期処理
-- `admin.html`: Railway上で見る管理画面
-- `package.json`: Railwayが依存関係を入れて起動するための設定
-- `railway.json`: Railwayの起動設定
-- `.env.example`: 環境変数の見本
+## できること
 
-## 使い方
+- Webhookコメント1件ごとにタスク履歴を作成
+- 完全自動化OFF時は、コメント保存と番号判定まで実行
+- 完全自動化ON時は、公開返信とPrivate Reply DMまで自動送信
+- `1 / 2 / 3 / ① / ② / ③ / 1番 / No.2` などをルール判定
+- ルールで判定不能な時だけDeepSeekで番号判定
+- 投稿キャプションからテーマを抽出し、DeepSeekで三択タロット鑑定文を生成
+- 投稿ごとに鑑定文を保存し、2件目以降は保存済み文を使う
+- 共通の公開返信テンプレートを管理画面で追加、編集、削除
+- 投稿サムネイル、コメント一覧、comment_id、media_id、送信状態を確認
+- MetaのコメントAPIレスポンスを生JSONで確認
+- 自分のコメントは保存するがDM送信しない
 
-1. このフォルダの中身をGitHubに上げる
-2. RailwayでGitHubリポジトリを選んでデプロイ
-3. Railway Variablesに以下を入れる
+## Railway Variables
 
 ```text
+PORT=3000
 VERIFY_TOKEN=自分で決めた文字列
 IG_USER_ID=API setup with Instagram Loginで表示されるAccount ID
 IG_USERNAME=自分のInstagramユーザー名
-ACCESS_TOKEN=API setup with Instagram Loginで生成したAccess Token
-ADMIN_AUTH_ENABLED=false
-ADMIN_TOKEN=
+ACCESS_TOKEN=Instagram Loginで発行した長期Access Token
 DATABASE_URL=Railway Postgresを追加すると自動で入ります
 APP_SECRET=Metaアプリシークレット
 GRAPH_BASE_URL=https://graph.instagram.com
 GRAPH_API_VERSION=v26.0
+DEEPSEEK_API_KEY=DeepSeekのAPIキー
+DEEPSEEK_BASE_URL=https://api.deepseek.com
+DEEPSEEK_MODEL=deepseek-v4-flash
+ADMIN_AUTH_ENABLED=false
+ADMIN_TOKEN=
 ```
 
-`APP_SECRET` はInstagram短期Tokenを長期Tokenに交換する時に使います。
+`IG_USERNAME` は自分のコメントを除外するための予備判定です。`@` は入れても入れなくても動きます。
 
-4. Meta Developerの `Use Cases -> Customize -> API setup with Instagram Login` でWebhook URLに設定
+## セットアップ
 
-```text
-https://YOUR-RAILWAY-DOMAIN.up.railway.app/webhook
-```
-
-5. Verify TokenにはRailwayの `VERIFY_TOKEN` と同じ文字列を入れる
-6. Webhook fieldは `comments` を購読する
-7. アプリを公開する
-8. 対象リールのキャプション末尾に入れる
-
-```text
-[auto:tarot-001]
-```
-
-9. 管理画面で「Instagramから同期」を押す
-10. 対象リールをクリックしてコメント一覧を確認する
-11. そのリールに `1` / `2` / `3` / `1番` / `２番` / `①` / `②` / `③` などでコメントすると返信します。
+1. このフォルダの中身をGitHubに上げる
+2. RailwayでGitHubリポジトリを選んでデプロイ
+3. RailwayでPostgresを追加する
+4. Railway Variablesに上の値を入れる
+5. Meta Developerの `Use Cases -> Customize -> API setup with Instagram Login` を開く
+6. Webhook URLに `https://YOUR-RAILWAY-DOMAIN.up.railway.app/webhook` を入れる
+7. Verify TokenにRailwayの `VERIFY_TOKEN` と同じ文字列を入れる
+8. Webhook fieldは `comments` を購読する
+9. アプリを公開する
+10. 対象リールのキャプションに `[auto:tarot-001]` を入れる
 
 ## 管理画面
-
-Railwayにデプロイしたら、以下で見られます。
 
 ```text
 https://YOUR-RAILWAY-DOMAIN.up.railway.app/admin
 ```
 
-見られるもの:
+左メニューは `Dashboard / Workflows / Task History / Posts / AI Settings / Token` です。
 
-- 環境変数が入っているか
-- 登録されているキャプション目印
-- 処理済みコメント数
-- 最新投稿の取得
-- 投稿ごとのキャプション目印チェック
-- サムネ付き対象リール一覧
-- 投稿ごとのコメント一覧
-- コメントごとの `comment_id` / `media_id` / ユーザー情報
-- コメント単体の再取得
-- Metaのコメント取得APIレスポンスの生JSON表示
-- 自分のコメント除外
-- コメント文の疑似判定
-- 自動化フロー一覧
-- 1/2/3ごとの公開返信バリエーション編集
-- 今日のDM送信数とエラー数
-- 今日Webhookで受けたコメント数
-- 今日Webhookで受けたコメントの投稿別サマリー
-- 受信したコメント、無視した理由、送信結果、エラー
+最初は `Workflows` の完全自動化がOFFです。ONにするまでは公開返信もDM送信も行いません。
 
-初期状態では管理画面認証は無効です。
-あとで認証をかけたい場合だけ、Railway Variablesに以下を入れてください。
+## Token
 
-```text
-ADMIN_AUTH_ENABLED=true
-ADMIN_TOKEN=管理画面用の好きな長い文字列
-```
+この版はFacebook Page Tokenではなく、Instagramログイン方式のTokenを使います。
 
-その場合の管理画面URLは以下です。
+短期Tokenを長期Tokenへ交換するには、管理画面の `Token` で短期Tokenを貼って `Instagram長期Tokenに交換` を押します。返ってきた `accessToken` をRailwayの `ACCESS_TOKEN` に入れ直してください。
 
-```text
-https://YOUR-RAILWAY-DOMAIN.up.railway.app/admin?token=ADMIN_TOKENの値
-```
-
-## Instagramログイン方式
-
-この版はInstagramログイン方式だけで動かします。`IG_USER_ID` と `ACCESS_TOKEN` は、同じInstagramログイン画面で取得したAccount IDとAccess Tokenの組み合わせにします。
-
-1. Meta App Dashboardで `Use Cases -> Customize`
-2. `API setup with Instagram Login` を開く
-3. 必要権限を追加する
-   - `instagram_business_basic`
-   - `instagram_business_manage_comments`
-   - `instagram_business_manage_messages`
-4. Instagram Testerを追加し、Instagram側で招待を承認する
-5. `Generate access tokens` でAccess Tokenを発行する
-6. 管理画面の「Instagram長期Tokenに交換」に貼る
-7. 返ってきた `accessToken` をRailwayの `ACCESS_TOKEN` に入れる
-8. 同じ画面のAccount IDを `IG_USER_ID` に入れる
-9. 同じ画面のWebhook設定で `/webhook` を登録する
-
-長期Tokenは約60日で期限切れします。
-管理画面の「Instagram長期Tokenを更新」で更新し、返ってきた `accessToken` をRailwayの `ACCESS_TOKEN` に入れ直してください。
-
-トークンは画面に表示するだけで、Postgresには保存しません。
-
-`Session key invalid` / `Invalid Access Token` が出た場合は、管理画面の「Tokenを確認」を押してください。
-Facebook Page Token、期限切れToken、権限を取り消したToken、Instagram Login以外で作ったTokenはInstagram APIでは失敗します。
-
-## Postgres連携
-
-RailwayでPostgresを追加すると、`DATABASE_URL` が自動で使えるようになります。
-
-```text
-Railway Project
-↓
-New
-↓
-Database
-↓
-Add PostgreSQL
-```
-
-`DATABASE_URL` がある場合は、以下をPostgresに保存します。
-
-- 自動化フロー
-- どの投稿media_idが対象マーカー付きか
-- サムネURL、キャプション、コメント数、いいね数
-- 投稿ごとのコメント一覧
-- 返信済みのcomment_id
-- 受信、無視、送信、エラーの履歴
-
-自分のコメントを除外するため、`IG_USERNAME` も入れてください。`@` はあってもなくても動きます。
-
-`DATABASE_URL` がない場合もアプリは動きますが、Railwayの再起動で履歴と返信済み情報は消えます。
+長期Tokenは約60日で期限切れします。期限が近くなったら `Instagram長期Tokenを更新` で更新します。
 
 ## プライバシーポリシー
 
@@ -155,15 +78,21 @@ MetaアプリのPrivacy Policy URLには以下を入れます。
 https://YOUR-RAILWAY-DOMAIN.up.railway.app/privacy
 ```
 
-## 鑑定文の編集
+## 対象リール
 
-公開コメント返信は、管理画面の「自動化フロー」から編集できます。
-1行につき1パターンとして保存され、送信時にランダムで選ばれます。
+対象にしたいリールのキャプションへ以下を入れます。
 
-DM鑑定文は固定文として扱うので、変更したい場合は `flows.js` のこのあたりを書き換えます。
-
-```js
-privateReply: "1を選んだあなたへ..."
+```text
+[auto:tarot-001]
 ```
 
-複数リールを分けたい場合は、`flows` に同じ形で追加します。
+マーカーがない投稿も同期・表示はできます。ただしWebhookでコメントが来ても `対象外リール` として保存し、DM送信はしません。
+
+## DeepSeek
+
+DeepSeekは2つの用途で使います。
+
+- ルールで判定できないコメントの番号判定
+- 投稿ごとの三択タロット鑑定文生成
+
+番号判定はJSONのみ、鑑定文生成はプレーンテキストのみで受け取ります。鑑定文は `🔮①` / `🔮②` / `🔮③` で分割してDBへ保存します。

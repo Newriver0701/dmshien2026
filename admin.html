@@ -3,19 +3,22 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>リールDM自動化</title>
+    <title>Instagram DM Automation</title>
     <style>
       :root {
         font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-        background: #f4f6f8;
-        color: #141922;
-        --border: #d9e0e8;
+        background: #f5f6f8;
+        color: #111827;
+        --panel: #ffffff;
+        --border: #dfe4ea;
         --muted: #667085;
-        --soft: #eef3f7;
+        --line: #eef1f5;
+        --dark: #172033;
         --blue: #2563eb;
-        --green: #15803d;
+        --green: #16833a;
         --red: #b42318;
         --amber: #b45309;
+        --soft: #f1f5f9;
       }
 
       * {
@@ -33,8 +36,8 @@
       }
 
       button {
-        min-height: 38px;
-        border: 1px solid #c8d1dc;
+        min-height: 36px;
+        border: 1px solid #cbd5e1;
         background: white;
         color: #1f2937;
         border-radius: 7px;
@@ -48,57 +51,29 @@
         color: white;
       }
 
+      button.danger {
+        border-color: #fecaca;
+        color: var(--red);
+      }
+
       button:disabled {
-        opacity: 0.65;
+        opacity: 0.62;
         cursor: progress;
       }
 
       input,
       textarea {
         width: 100%;
-        border: 1px solid #c8d1dc;
+        border: 1px solid #cbd5e1;
         border-radius: 7px;
-        padding: 8px 11px;
-      }
-
-      input {
-        min-height: 40px;
+        padding: 9px 11px;
+        background: #fff;
       }
 
       textarea {
-        min-height: 78px;
+        min-height: 92px;
+        line-height: 1.5;
         resize: vertical;
-        line-height: 1.45;
-      }
-
-      a {
-        color: #2458c5;
-      }
-
-      main {
-        width: min(1260px, calc(100% - 28px));
-        margin: 22px auto 44px;
-      }
-
-      .shell {
-        display: grid;
-        grid-template-columns: 240px 1fr;
-        gap: 14px;
-      }
-
-      aside,
-      section,
-      .hero {
-        background: white;
-        border: 1px solid var(--border);
-        border-radius: 8px;
-      }
-
-      aside {
-        align-self: start;
-        position: sticky;
-        top: 14px;
-        padding: 16px;
       }
 
       h1,
@@ -109,8 +84,7 @@
       }
 
       h1 {
-        font-size: 25px;
-        line-height: 1.25;
+        font-size: 24px;
       }
 
       h2 {
@@ -121,11 +95,26 @@
         font-size: 14px;
       }
 
+      main {
+        display: grid;
+        grid-template-columns: 250px 1fr;
+        min-height: 100vh;
+      }
+
+      aside {
+        position: sticky;
+        top: 0;
+        height: 100vh;
+        background: var(--dark);
+        color: white;
+        padding: 18px;
+      }
+
       .brand {
         display: flex;
-        gap: 10px;
         align-items: center;
-        margin-bottom: 18px;
+        gap: 10px;
+        margin-bottom: 22px;
       }
 
       .mark {
@@ -134,8 +123,8 @@
         width: 38px;
         height: 38px;
         border-radius: 8px;
-        background: #141922;
-        color: white;
+        background: #ffffff;
+        color: var(--dark);
         font-weight: 800;
       }
 
@@ -145,58 +134,63 @@
       }
 
       .nav a {
-        color: #344054;
+        color: #d9e2ef;
         text-decoration: none;
-        padding: 9px 10px;
+        padding: 10px;
         border-radius: 7px;
       }
 
       .nav a:hover {
-        background: var(--soft);
+        background: rgba(255, 255, 255, 0.1);
       }
 
-      .note,
-      .muted {
-        color: var(--muted);
-      }
-
-      .note {
-        margin-top: 16px;
-        padding-top: 14px;
-        border-top: 1px solid #edf1f5;
+      .aside-note {
+        margin-top: 20px;
+        padding-top: 16px;
+        border-top: 1px solid rgba(255, 255, 255, 0.14);
+        color: #aebbd0;
         font-size: 13px;
-        line-height: 1.55;
+        line-height: 1.6;
       }
 
       .content {
+        width: min(1360px, calc(100% - 28px));
+        margin: 22px auto 48px;
         display: grid;
         gap: 14px;
       }
 
+      .hero,
+      section,
+      .card {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+      }
+
       .hero {
+        padding: 18px;
         display: grid;
         grid-template-columns: 1fr auto;
-        gap: 16px;
         align-items: end;
-        padding: 20px;
+        gap: 14px;
+      }
+
+      .lead,
+      .muted,
+      .hint {
+        color: var(--muted);
       }
 
       .lead {
-        margin-top: 7px;
-        color: #475467;
+        margin-top: 6px;
         line-height: 1.65;
-        max-width: 760px;
       }
 
-      .actions,
-      .row-actions {
-        display: flex;
-        gap: 8px;
-        flex-wrap: wrap;
-      }
-
-      .actions {
-        justify-content: flex-end;
+      .hint {
+        font-size: 13px;
+        line-height: 1.55;
+        margin-top: 6px;
       }
 
       .metrics {
@@ -211,120 +205,93 @@
 
       .metric span {
         display: block;
-        margin-bottom: 7px;
         color: var(--muted);
-        font-size: 13px;
+        font-size: 12px;
+        margin-bottom: 7px;
       }
 
       .metric strong {
-        font-size: 23px;
-      }
-
-      .grid {
-        display: grid;
-        grid-template-columns: 1fr 1.15fr;
-        gap: 14px;
-      }
-
-      .stack {
-        display: grid;
-        gap: 14px;
+        font-size: 22px;
       }
 
       .panel {
         padding: 16px;
       }
 
-      .head {
+      .head,
+      .line,
+      .row-actions {
         display: flex;
-        justify-content: space-between;
         align-items: center;
         gap: 10px;
-        margin-bottom: 12px;
       }
 
-      .hint {
-        color: var(--muted);
-        line-height: 1.55;
-        font-size: 13px;
-        margin: -4px 0 12px;
-      }
-
-      .flow-list,
-      .media-list,
-      .comment-list,
-      .webhook-list {
-        display: grid;
-        gap: 10px;
-      }
-
-      .flow,
-      .media,
-      .comment,
-      .webhook-item {
-        border: 1px solid #e5e9f0;
-        border-radius: 8px;
-        background: #fff;
-        padding: 12px;
-      }
-
-      .webhook-item {
-        display: grid;
-        grid-template-columns: 72px 1fr;
-        gap: 10px;
-        cursor: pointer;
-      }
-
-      .webhook-thumb {
-        width: 72px;
-        aspect-ratio: 1 / 1;
-        object-fit: cover;
-        border-radius: 7px;
-        background: #edf1f5;
-      }
-
-      .media {
-        display: grid;
-        grid-template-columns: 108px 1fr;
-        gap: 12px;
-        cursor: pointer;
-      }
-
-      .media.selected {
-        border-color: var(--blue);
-        box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.08);
-      }
-
-      .thumb {
-        width: 108px;
-        aspect-ratio: 4 / 5;
-        object-fit: cover;
-        border-radius: 7px;
-        background: #edf1f5;
-      }
-
-      .caption {
-        margin-top: 8px;
-        max-height: 58px;
-        overflow: hidden;
-        color: #475467;
-        line-height: 1.45;
-        font-size: 13px;
-      }
-
+      .head,
       .line {
-        display: flex;
         justify-content: space-between;
+      }
+
+      .row-actions {
+        flex-wrap: wrap;
+      }
+
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 10px;
+      }
+
+      .template-row {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 8px;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 14px;
+      }
+
+      .stack {
+        display: grid;
         gap: 12px;
-        align-items: start;
+      }
+
+      .workflow {
+        display: grid;
+        gap: 10px;
+      }
+
+      .step {
+        display: grid;
+        grid-template-columns: 42px 1fr auto;
+        gap: 12px;
+        align-items: center;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 12px;
+        background: #fff;
+      }
+
+      .step-no {
+        display: grid;
+        place-items: center;
+        width: 34px;
+        height: 34px;
+        border-radius: 50%;
+        background: var(--soft);
+        color: #344054;
+        font-weight: 800;
       }
 
       .badge {
         display: inline-flex;
-        align-items: center;
         min-height: 23px;
-        padding: 2px 8px;
+        align-items: center;
         border-radius: 999px;
+        padding: 2px 8px;
         background: #eef2f7;
         color: #344054;
         font-size: 12px;
@@ -332,7 +299,7 @@
       }
 
       .badge.good {
-        background: #e7f6ec;
+        background: #e8f7ee;
         color: var(--green);
       }
 
@@ -341,61 +308,77 @@
         color: var(--red);
       }
 
-      .comment.owner {
-        opacity: 0.58;
+      .badge.warn {
+        background: #fff4df;
+        color: var(--amber);
       }
 
-      .comment-detail {
-        margin-top: 10px;
-        display: none;
-        padding-top: 10px;
-        border-top: 1px solid #eef1f5;
-      }
-
-      .comment.open .comment-detail {
-        display: block;
-      }
-
-      .id-grid {
-        display: grid;
-        gap: 6px;
-        margin-top: 9px;
-      }
-
-      .id-row {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 8px;
-        color: #475467;
-        font-size: 12px;
-      }
-
-      .id-row code {
-        word-break: break-all;
-      }
-
-      .mini {
-        min-height: 30px;
-        padding: 5px 8px;
-        font-size: 12px;
-      }
-
-      .reply-editor {
+      .list {
         display: grid;
         gap: 10px;
-        margin-top: 12px;
       }
 
-      .choice {
-        font-size: 20px;
-        font-weight: 800;
+      .item {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 12px;
+        background: white;
+      }
+
+      .item.dim {
+        opacity: 0.62;
+        background: #f8fafc;
+      }
+
+      .media-item,
+      .task-item {
+        cursor: pointer;
+      }
+
+      .media-item {
+        display: grid;
+        grid-template-columns: 90px 1fr;
+        gap: 12px;
+      }
+
+      .thumb {
+        width: 90px;
+        aspect-ratio: 4 / 5;
+        object-fit: cover;
+        border-radius: 7px;
+        background: var(--soft);
+      }
+
+      .caption,
+      .pre {
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+
+      .caption {
+        margin-top: 8px;
+        max-height: 70px;
+        overflow: hidden;
+        color: #475467;
+        line-height: 1.45;
+        font-size: 13px;
+      }
+
+      .pre {
+        padding: 12px;
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        background: #f8fafc;
+        color: #344054;
+        max-height: 280px;
+        overflow: auto;
+        font-size: 13px;
       }
 
       .field {
         display: grid;
         gap: 6px;
-        margin-bottom: 10px;
+        margin-top: 10px;
       }
 
       .field label {
@@ -403,39 +386,16 @@
         font-size: 13px;
       }
 
-      .result {
-        margin-top: 12px;
-        padding: 12px;
-        background: #f7fafc;
-        border: 1px solid #e5e9f0;
-        border-radius: 7px;
-        white-space: pre-wrap;
-        word-break: break-word;
-        font-size: 13px;
-        color: #344054;
-        max-height: 250px;
-        overflow: auto;
-      }
-
-      .raw-box {
-        display: none;
-        margin-top: 12px;
-      }
-
-      .raw-box.open {
-        display: block;
-      }
-
       .kv {
         display: grid;
-        gap: 8px;
+        gap: 7px;
       }
 
       .kv div {
         display: flex;
         justify-content: space-between;
         gap: 12px;
-        border-top: 1px solid #eef1f5;
+        border-top: 1px solid var(--line);
         padding-top: 8px;
       }
 
@@ -454,6 +414,13 @@
         font-weight: 700;
       }
 
+      code {
+        background: #eef2f7;
+        border-radius: 4px;
+        padding: 2px 5px;
+        word-break: break-all;
+      }
+
       table {
         width: 100%;
         border-collapse: collapse;
@@ -462,9 +429,9 @@
 
       th,
       td {
-        padding: 9px;
-        border-top: 1px solid #eef1f5;
         text-align: left;
+        padding: 9px;
+        border-top: 1px solid var(--line);
         vertical-align: top;
       }
 
@@ -473,14 +440,8 @@
         font-weight: 600;
       }
 
-      code {
-        background: #eef2f7;
-        border-radius: 4px;
-        padding: 2px 5px;
-      }
-
       @media (max-width: 980px) {
-        .shell,
+        main,
         .hero,
         .grid,
         .metrics {
@@ -489,203 +450,210 @@
 
         aside {
           position: static;
-        }
-
-        .actions {
-          justify-content: flex-start;
+          height: auto;
         }
       }
     </style>
   </head>
   <body>
     <main>
-      <div class="shell">
-        <aside>
-          <div class="brand">
-            <div class="mark">DM</div>
+      <aside>
+        <div class="brand">
+          <div class="mark">DM</div>
+          <div>
+            <h3>Shien Automation</h3>
+            <p class="muted">Pabbly代替</p>
+          </div>
+        </div>
+        <nav class="nav">
+          <a href="#dashboard">Dashboard</a>
+          <a href="#workflows">Workflows</a>
+          <a href="#tasks">Task History</a>
+          <a href="#posts">Posts</a>
+          <a href="#ai">AI Settings</a>
+          <a href="#token">Token</a>
+        </nav>
+        <p class="aside-note">
+          完全自動化は初期OFFです。ONにするとWebhook受信から公開返信とDM送信まで自動で進みます。
+        </p>
+      </aside>
+
+      <div class="content">
+        <div class="hero" id="dashboard">
+          <div>
+            <h1>Instagram DM Automation</h1>
+            <p class="lead">Webhookコメントをタスク化し、番号判定、鑑定文生成、公開返信、Private Reply DMまで管理します。</p>
+            <p class="muted" id="updated">Loading...</p>
+          </div>
+          <div class="row-actions">
+            <button id="copy-webhook">Webhook URLをコピー</button>
+            <button id="refresh" class="primary">更新</button>
+          </div>
+        </div>
+
+        <div class="metrics">
+          <section class="metric"><span>完全自動化</span><strong id="m-auto">OFF</strong></section>
+          <section class="metric"><span>今日のタスク</span><strong id="m-tasks">0</strong></section>
+          <section class="metric"><span>今日Webhook</span><strong id="m-webhook">0</strong></section>
+          <section class="metric"><span>今日DM送信</span><strong id="m-sent">0</strong></section>
+          <section class="metric"><span>今日エラー</span><strong id="m-errors">0</strong></section>
+          <section class="metric"><span>Postgres</span><strong id="m-db">確認中</strong></section>
+        </div>
+
+        <section class="panel" id="workflows">
+          <div class="head">
             <div>
-              <h3>リールDM自動化</h3>
-              <p class="muted">コメント返信管理</p>
+              <h2>Workflows</h2>
+              <p class="hint">WebhookからDM送信までの実行ステップです。</p>
+            </div>
+            <div class="row-actions">
+              <button id="toggle-auto" class="primary">完全自動化をONにする</button>
+              <button id="toggle-ai-choice">番号AI</button>
+              <button id="toggle-ai-reading">鑑定AI</button>
+              <button id="save-settings">設定を保存</button>
             </div>
           </div>
-          <nav class="nav">
-            <a href="#dashboard">ダッシュボード</a>
-            <a href="#flows">自動化フロー</a>
-            <a href="#reels">対象リール</a>
-            <a href="#detail">投稿詳細</a>
-            <a href="#test">送信せずテスト</a>
-            <a href="#tokens">Instagramログイン設定</a>
-            <a href="#events">履歴</a>
-          </nav>
-          <p class="note">
-            自分のコメントは自動返信しません。コメント詳細では「自分のコメント」として薄く表示されます。
-          </p>
-        </aside>
-
-        <div class="content">
-          <div class="hero" id="dashboard">
-            <div>
-              <h1>DM自動化の稼働状況</h1>
-              <p class="lead">リールへのコメントを受け取り、番号ごとの公開返信とDM送信を管理します。投稿一覧は対象リールを選ぶための補助です。</p>
-              <p class="muted" id="updated">Loading...</p>
-            </div>
-            <div class="actions">
-              <button id="copy-webhook">Webhook URLをコピー</button>
-              <button id="refresh">更新</button>
-            </div>
+          <div class="workflow">
+            <div class="step"><div class="step-no">1</div><div><h3>Webhook Trigger</h3><p class="hint">Instagramコメントを受信してタスクを作成</p></div><span class="badge good">active</span></div>
+            <div class="step"><div class="step-no">2</div><div><h3>Choice Detection</h3><p class="hint">ルール判定。判定不能ならDeepSeek JSON判定</p></div><span class="badge" id="b-ai-choice">AI</span></div>
+            <div class="step"><div class="step-no">3</div><div><h3>Generate Tarot Reading</h3><p class="hint">初コメント時に投稿キャプションから1/2/3の鑑定文を生成</p></div><span class="badge" id="b-ai-reading">AI</span></div>
+            <div class="step"><div class="step-no">4</div><div><h3>Public Reply</h3><p class="hint">{choice}を共通テンプレートに差し込み、ランダム送信</p></div><span class="badge">template</span></div>
+            <div class="step"><div class="step-no">5</div><div><h3>Private Reply DM</h3><p class="hint">選ばれた番号の鑑定文をcomment_id宛に送信</p></div><span class="badge warn" id="b-auto">paused</span></div>
           </div>
-
-          <div class="metrics">
-            <section class="metric"><span>稼働中フロー</span><strong id="m-flows">0</strong></section>
-            <section class="metric"><span>対象リール</span><strong id="m-posts">0</strong></section>
-            <section class="metric"><span>今日のWebhook受信</span><strong id="m-webhook">0</strong></section>
-            <section class="metric"><span>今日のDM送信</span><strong id="m-sent">0</strong></section>
-            <section class="metric"><span>今日のエラー</span><strong id="m-errors">0</strong></section>
-            <section class="metric"><span>Postgres</span><strong id="m-db">確認中</strong></section>
-          </div>
-
-          <section class="panel" id="webhooks-today">
+          <div class="field">
             <div class="head">
-              <h2>今日Webhookで受けたコメント</h2>
-              <span class="muted">投稿別</span>
+              <label>公開返信テンプレート（{choice} を番号に差し込み）</label>
+              <button id="add-template">テンプレート追加</button>
             </div>
-            <div class="webhook-list" id="webhook-today-list"></div>
+            <div class="stack" id="public-template-list"></div>
+          </div>
+        </section>
+
+        <div class="grid">
+          <section class="panel" id="tasks">
+            <div class="head">
+              <div>
+                <h2>Task History</h2>
+                <p class="hint">Webhookコメント1件ごとの実行ログです。</p>
+              </div>
+              <button id="load-tasks">再読込</button>
+            </div>
+            <div class="list" id="task-list"></div>
           </section>
 
-          <div class="grid">
-            <div class="stack">
-              <section class="panel" id="flows">
-                <div class="head">
-                  <h2>自動化フロー</h2>
-                  <button id="load-flows">再読込</button>
-                </div>
-                <p class="hint">どの目印で、どんな公開返信/DMが送られるかを確認します。</p>
-                <div class="flow-list" id="flow-list"></div>
-              </section>
-
-              <section class="panel" id="reels">
-                <div class="head">
-                  <h2>対象リールを探す</h2>
-                  <button class="primary" id="sync-media">Instagramから同期</button>
-                </div>
-                <p class="hint">サムネ付きで投稿を保存します。クリックするとコメント一覧を見られます。</p>
-                <div class="media-list" id="media-list"></div>
-              </section>
-            </div>
-
-            <div class="stack">
-              <section class="panel" id="detail">
-                <div class="head">
-                  <h2>投稿詳細</h2>
-                  <div class="row-actions">
-                    <button id="raw-comments">コメントAPIのJSONを見る</button>
-                    <button id="sync-comments">コメントを取得</button>
-                  </div>
-                </div>
-                <div id="post-detail" class="muted">投稿を選択してください。</div>
-                <div class="raw-box" id="raw-box">
-                  <div class="head">
-                    <h3>Meta API レスポンス</h3>
-                    <div class="row-actions">
-                      <button class="mini" id="copy-json">JSONをコピー</button>
-                      <button class="mini" id="close-json">閉じる</button>
-                    </div>
-                  </div>
-                  <div class="result" id="raw-result"></div>
-                </div>
-                <div class="comment-list" id="comment-list"></div>
-              </section>
-
-              <section class="panel" id="test">
-                <div class="head">
-                  <h2>送信せずテスト</h2>
-                </div>
-                <p class="hint">選んだ投稿とコメント文で、どのDMが送られる予定か確認します。</p>
-                <div class="field">
-                  <label for="media-id">投稿ID</label>
-                  <input id="media-id" placeholder="17900000000000000" />
-                </div>
-                <div class="field">
-                  <label for="comment-text">コメント文</label>
-                  <input id="comment-text" value="1番" />
-                </div>
-                <div class="row-actions">
-                  <button id="dry-run" class="primary">送信せずテスト</button>
-                  <button id="check-marker">目印を確認</button>
-                </div>
-                <div class="result" id="test-result">まだテストしていません。</div>
-              </section>
-
-              <section class="panel" id="tokens">
-                <div class="head">
-                  <h2>Instagramログイン設定</h2>
-                </div>
-                <p class="hint">Instagram Login方式では、短期Tokenを長期Tokenに交換してからRailwayのACCESS_TOKENに入れます。長期Tokenは期限前に更新できます。</p>
-                <div class="field">
-                  <label for="ig-short-token">Instagram短期Access Token</label>
-                  <input id="ig-short-token" placeholder="API setup with Instagram Loginで生成したToken" />
-                </div>
-                <div class="field">
-                  <label for="ig-long-token">Instagram長期Access Token</label>
-                  <input id="ig-long-token" placeholder="交換/更新後にここへ入ります。RailwayのACCESS_TOKENに入れてください" />
-                </div>
-                <div class="row-actions">
-                  <button id="ig-exchange-token" class="primary">Instagram長期Tokenに交換</button>
-                  <button id="ig-refresh-token">Instagram長期Tokenを更新</button>
-                  <button id="ig-check-token">Tokenを確認</button>
-                  <button id="copy-ig-token">長期Tokenをコピー</button>
-                </div>
-                <div class="result" id="token-result">まだ実行していません。</div>
-              </section>
-            </div>
-          </div>
-
-          <section class="panel" id="setup">
-            <div class="head"><h2>設定チェック</h2></div>
-            <div class="kv" id="env"></div>
-          </section>
-
-          <section class="panel" id="events">
-            <div class="head">
-              <h2>履歴</h2>
-              <span class="muted">10秒ごとに更新</span>
-            </div>
-            <table>
-              <thead>
-                <tr>
-                  <th>時間</th>
-                  <th>状態</th>
-                  <th>投稿</th>
-                  <th>コメント</th>
-                  <th>番号</th>
-                  <th>詳細</th>
-                </tr>
-              </thead>
-              <tbody id="events-body"></tbody>
-            </table>
+          <section class="panel">
+            <div class="head"><h2>Task Detail</h2></div>
+            <div id="task-detail" class="muted">タスクを選択してください。</div>
           </section>
         </div>
+
+        <div class="grid">
+          <section class="panel" id="posts">
+            <div class="head">
+              <div>
+                <h2>Posts</h2>
+                <p class="hint">投稿ベースの確認画面です。対象外投稿も保存して表示します。</p>
+              </div>
+              <button id="sync-media" class="primary">Instagramから同期</button>
+            </div>
+            <div class="list" id="media-list"></div>
+          </section>
+
+          <section class="panel">
+            <div class="head">
+              <h2>Post Detail</h2>
+              <div class="row-actions">
+                <button id="generate-reading">鑑定文を生成</button>
+                <button id="sync-comments">コメント取得</button>
+                <button id="raw-comments">コメントJSON</button>
+              </div>
+            </div>
+            <div id="post-detail" class="muted">投稿を選択してください。</div>
+            <div class="field">
+              <div class="pre" id="post-reading">鑑定文はまだ表示されていません。</div>
+            </div>
+            <div class="field">
+              <h3>関連タスク</h3>
+              <div class="list" id="post-tasks"></div>
+            </div>
+            <div class="field">
+              <h3>コメント</h3>
+              <div class="list" id="comment-list"></div>
+            </div>
+          </section>
+        </div>
+
+        <div class="grid">
+          <section class="panel" id="ai">
+            <div class="head">
+              <div>
+                <h2>AI Settings</h2>
+                <p class="hint">DeepSeek接続、番号判定、鑑定文生成をテストします。</p>
+              </div>
+              <button id="ai-check">DeepSeek接続確認</button>
+            </div>
+            <div class="field">
+              <label for="choice-test-text">番号判定テスト</label>
+              <input id="choice-test-text" value="1お願いします" />
+            </div>
+            <div class="row-actions">
+              <button id="ai-choice-test" class="primary">番号判定をテスト</button>
+              <button id="dry-run">送信せず確認</button>
+            </div>
+            <div class="pre" id="ai-result">まだ実行していません。</div>
+          </section>
+
+          <section class="panel" id="token">
+            <div class="head"><h2>Token</h2></div>
+            <p class="hint">Instagram短期Tokenを長期Tokenに交換し、RailwayのACCESS_TOKENに入れてください。</p>
+            <div class="field">
+              <label for="ig-short-token">Instagram短期Access Token</label>
+              <input id="ig-short-token" placeholder="API setup with Instagram Loginで生成したToken" />
+            </div>
+            <div class="field">
+              <label for="ig-long-token">Instagram長期Access Token</label>
+              <input id="ig-long-token" placeholder="交換/更新後にここへ入ります" />
+            </div>
+            <div class="row-actions">
+              <button id="ig-exchange-token" class="primary">長期Tokenに交換</button>
+              <button id="ig-refresh-token">長期Tokenを更新</button>
+              <button id="ig-check-token">Token確認</button>
+              <button id="copy-ig-token">コピー</button>
+            </div>
+            <div class="pre" id="token-result">まだ実行していません。</div>
+          </section>
+        </div>
+
+        <section class="panel">
+          <div class="head"><h2>Setup</h2></div>
+          <div class="kv" id="env"></div>
+        </section>
       </div>
     </main>
 
     <script>
       const params = new URLSearchParams(location.search);
       const token = params.get("token");
-      const api = (path) =>
-        token ? `${path}${path.includes("?") ? "&" : "?"}token=${encodeURIComponent(token)}` : path;
+      const api = (path) => token ? `${path}${path.includes("?") ? "&" : "?"}token=${encodeURIComponent(token)}` : path;
+
+      let settings = {};
       let selectedMediaId = "";
-      let lastRawJson = "";
 
       document.getElementById("refresh").addEventListener("click", refreshAll);
-      document.getElementById("load-flows").addEventListener("click", loadFlows);
+      document.getElementById("copy-webhook").addEventListener("click", copyWebhookUrl);
+      document.getElementById("toggle-auto").addEventListener("click", toggleAutomation);
+      document.getElementById("toggle-ai-choice").addEventListener("click", toggleAiChoice);
+      document.getElementById("toggle-ai-reading").addEventListener("click", toggleAiReading);
+      document.getElementById("save-settings").addEventListener("click", saveSettings);
+      document.getElementById("add-template").addEventListener("click", addTemplateRow);
+      document.getElementById("load-tasks").addEventListener("click", loadTasks);
       document.getElementById("sync-media").addEventListener("click", syncMedia);
       document.getElementById("sync-comments").addEventListener("click", syncComments);
       document.getElementById("raw-comments").addEventListener("click", showRawComments);
-      document.getElementById("copy-json").addEventListener("click", copyRawJson);
-      document.getElementById("close-json").addEventListener("click", closeRawJson);
-      document.getElementById("dry-run").addEventListener("click", dryRunComment);
-      document.getElementById("check-marker").addEventListener("click", checkMarker);
-      document.getElementById("copy-webhook").addEventListener("click", copyWebhookUrl);
+      document.getElementById("generate-reading").addEventListener("click", generateReading);
+      document.getElementById("ai-check").addEventListener("click", checkAi);
+      document.getElementById("ai-choice-test").addEventListener("click", testChoiceAi);
+      document.getElementById("dry-run").addEventListener("click", dryRun);
       document.getElementById("ig-exchange-token").addEventListener("click", exchangeInstagramToken);
       document.getElementById("ig-refresh-token").addEventListener("click", refreshInstagramToken);
       document.getElementById("ig-check-token").addEventListener("click", checkInstagramToken);
@@ -695,235 +663,355 @@
       setInterval(loadStatus, 10000);
 
       async function refreshAll() {
-        await Promise.all([loadStatus(), loadFlows(), loadMedia()]);
+        await Promise.all([loadStatus(), loadSettings(), loadTasks(), loadMedia()]);
       }
 
       async function loadStatus() {
         const data = await request("/api/status");
+        settings = data.settings ?? settings;
         document.getElementById("updated").textContent = `最終更新: ${new Date().toLocaleString()}`;
-        document.getElementById("m-flows").textContent = data.stats.activeFlows ?? 0;
-        document.getElementById("m-posts").textContent = data.stats.activePosts ?? 0;
+        document.getElementById("m-auto").textContent = settings.automationEnabled ? "ON" : "OFF";
+        document.getElementById("m-tasks").textContent = data.stats.tasksToday ?? 0;
         document.getElementById("m-webhook").textContent = data.stats.webhookToday ?? 0;
         document.getElementById("m-sent").textContent = data.stats.sentToday ?? 0;
         document.getElementById("m-errors").textContent = data.stats.errorsToday ?? 0;
-        document.getElementById("m-db").textContent = data.database.connected
-          ? "接続中"
-          : data.database.configured
-            ? "未接続"
-            : "未設定";
-
-        const envRows = Object.entries(data.env).map(([key, value]) =>
-          row(labelForEnv(key), typeof value === "boolean" ? status(value) : escapeHtml(value))
-        );
-        if (data.database.disabledReason) {
-          envRows.push(row("Postgresエラー", `<span class="bad-text">${escapeHtml(data.database.disabledReason)}</span>`));
-        }
-        document.getElementById("env").innerHTML = envRows.join("");
-        renderWebhookToday(data.webhookTodayByMedia ?? []);
-        renderEvents(data.recentEvents ?? []);
+        document.getElementById("m-db").textContent = data.database.connected ? "接続中" : data.database.configured ? "未接続" : "未設定";
+        renderSettingBadges();
+        renderEnv(data.env, data.database);
       }
 
-      async function loadFlows() {
-        const data = await request("/api/flows");
-        document.getElementById("flow-list").innerHTML =
-          data.flows.map(flowCard).join("") || `<p class="muted">フローがありません。</p>`;
-        document.querySelectorAll("[data-toggle-flow]").forEach((button) => {
-          button.addEventListener("click", () => toggleFlow(button.dataset.toggleFlow, button.dataset.enabled !== "true"));
+      async function loadSettings() {
+        const data = await request("/api/settings");
+        settings = data.settings ?? {};
+        renderSettings();
+      }
+
+      function renderSettings() {
+        renderSettingBadges();
+        renderTemplateRows(settings.publicReplyTemplates ?? []);
+      }
+
+      function renderSettingBadges() {
+        document.getElementById("toggle-auto").textContent = settings.automationEnabled ? "完全自動化をOFFにする" : "完全自動化をONにする";
+        document.getElementById("m-auto").textContent = settings.automationEnabled ? "ON" : "OFF";
+        document.getElementById("b-auto").textContent = settings.automationEnabled ? "active" : "paused";
+        document.getElementById("b-auto").className = `badge ${settings.automationEnabled ? "good" : "warn"}`;
+        document.getElementById("b-ai-choice").textContent = settings.aiChoiceEnabled ? "AI on" : "AI off";
+        document.getElementById("b-ai-reading").textContent = settings.aiReadingEnabled ? "AI on" : "AI off";
+        document.getElementById("toggle-ai-choice").textContent = settings.aiChoiceEnabled ? "番号AIをOFF" : "番号AIをON";
+        document.getElementById("toggle-ai-reading").textContent = settings.aiReadingEnabled ? "鑑定AIをOFF" : "鑑定AIをON";
+      }
+
+      async function toggleAutomation() {
+        await put("/api/settings", { settings: { automationEnabled: !settings.automationEnabled } });
+        await refreshAll();
+      }
+
+      async function toggleAiChoice() {
+        await put("/api/settings", { settings: { aiChoiceEnabled: !settings.aiChoiceEnabled } });
+        await refreshAll();
+      }
+
+      async function toggleAiReading() {
+        await put("/api/settings", { settings: { aiReadingEnabled: !settings.aiReadingEnabled } });
+        await refreshAll();
+      }
+
+      async function saveSettings() {
+        const publicReplyTemplates = [...document.querySelectorAll("[data-template-input]")]
+          .map((item) => item.value.trim())
+          .filter(Boolean);
+        const data = await put("/api/settings", { settings: { publicReplyTemplates } });
+        settings = data.settings;
+        renderSettings();
+        showAi({ ok: true, message: "設定を保存しました", settings });
+      }
+
+      function renderTemplateRows(templates) {
+        const list = document.getElementById("public-template-list");
+        list.innerHTML = (templates.length ? templates : [""]).map((template, index) => `
+          <div class="template-row">
+            <input data-template-input value="${escapeHtml(template)}" placeholder="{choice}を選びましたね。鑑定結果をDMに送りました。" />
+            <button data-remove-template="${index}" class="danger">削除</button>
+          </div>
+        `).join("");
+        document.querySelectorAll("[data-remove-template]").forEach((el) => {
+          el.addEventListener("click", () => {
+            el.closest(".template-row")?.remove();
+          });
         });
-        document.querySelectorAll("[data-save-flow]").forEach((button) => {
-          button.addEventListener("click", () => saveFlowReplies(button.dataset.saveFlow));
+      }
+
+      function addTemplateRow() {
+        const list = document.getElementById("public-template-list");
+        list.insertAdjacentHTML("beforeend", `
+          <div class="template-row">
+            <input data-template-input value="" placeholder="{choice}ですね。鑑定結果をDMに送りました。" />
+            <button data-remove-template class="danger">削除</button>
+          </div>
+        `);
+        const button = list.lastElementChild?.querySelector("[data-remove-template]");
+        button?.addEventListener("click", () => button.closest(".template-row")?.remove());
+      }
+
+      async function loadTasks() {
+        const data = await request("/api/tasks?limit=100");
+        document.getElementById("task-list").innerHTML =
+          data.tasks.map(taskCard).join("") || `<p class="muted">まだタスクはありません。</p>`;
+        document.querySelectorAll("[data-task-id]").forEach((el) => {
+          el.addEventListener("click", () => selectTask(el.dataset.taskId));
         });
+      }
+
+      async function selectTask(taskId) {
+        const data = await request(`/api/tasks/${taskId}`);
+        renderTaskDetail(data.task, data.steps ?? []);
+      }
+
+      function taskCard(task) {
+        return `
+          <div class="item task-item" data-task-id="${escapeHtml(task.taskId)}">
+            <div class="line">
+              <div>
+                <strong>${escapeHtml(statusLabel(task.status))}</strong>
+                <span class="muted">${escapeHtml(formatDate(task.createdAt))}</span>
+              </div>
+              <span class="badge ${statusClass(task.status)}">${escapeHtml(task.choice || "-")}</span>
+            </div>
+            <p class="caption">${escapeHtml(task.sanitizedText || task.text || "")}</p>
+            <p class="muted"><code>${escapeHtml(task.commentId || "")}</code> / ${escapeHtml(task.choiceMethod || "未判定")}</p>
+          </div>
+        `;
+      }
+
+      function renderTaskDetail(task, steps) {
+        document.getElementById("task-detail").innerHTML = `
+          <div class="kv">
+            ${row("状態", escapeHtml(statusLabel(task.status)))}
+            ${row("受信日時", escapeHtml(formatDate(task.createdAt)))}
+            ${row("投稿ID", `<code>${escapeHtml(task.mediaId || "")}</code>`)}
+            ${row("コメントID", `<code>${escapeHtml(task.commentId || "")}</code>`)}
+            ${row("番号", escapeHtml(task.choice || "unknown"))}
+            ${row("判定方法", escapeHtml(task.choiceMethod || "-"))}
+            ${row("公開返信", escapeHtml(task.publicReply || "なし"))}
+            ${row("DM本文", escapeHtml(task.privateReply || "なし"))}
+            ${row("エラー", task.errorMessage ? `<span class="bad-text">${escapeHtml(task.errorMessage)}</span>` : "なし")}
+          </div>
+          <div class="field">
+            <h3>ステップ</h3>
+            <div class="list">
+              ${steps.map(stepCard).join("") || `<p class="muted">ステップログはありません。</p>`}
+            </div>
+          </div>
+          <div class="row-actions">
+            <button class="primary" data-retry-task="${escapeHtml(task.taskId)}">このタスクを再実行</button>
+          </div>
+        `;
+        document.querySelector("[data-retry-task]")?.addEventListener("click", async (event) => {
+          await post(`/api/tasks/${event.currentTarget.dataset.retryTask}/retry`, {});
+          await Promise.all([loadTasks(), selectTask(event.currentTarget.dataset.retryTask), loadStatus()]);
+        });
+      }
+
+      function stepCard(step) {
+        return `
+          <div class="item">
+            <div class="line">
+              <strong>${escapeHtml(step.stepKey)}</strong>
+              <span class="badge ${statusClass(step.status)}">${escapeHtml(step.status)}</span>
+            </div>
+            <p class="hint">${escapeHtml(formatDate(step.createdAt))}</p>
+            <p class="caption">${escapeHtml(step.message || "")}</p>
+          </div>
+        `;
       }
 
       async function loadMedia() {
         const data = await request("/api/media");
         document.getElementById("media-list").innerHTML =
-          data.media.map(mediaCard).join("") || `<p class="muted">まだ投稿が保存されていません。「Instagramから同期」を押してください。</p>`;
+          data.media.map(mediaCard).join("") || `<p class="muted">まだ投稿が保存されていません。</p>`;
         document.querySelectorAll("[data-media-id]").forEach((el) => {
           el.addEventListener("click", () => selectMedia(el.dataset.mediaId));
         });
       }
 
       async function syncMedia() {
-        setBusy("sync-media", true);
-        try {
-          showTest(await post("/api/sync-media", { limit: 25 }));
-          await Promise.all([loadStatus(), loadMedia(), loadFlows()]);
-        } catch (error) {
-          showError(error);
-        } finally {
-          setBusy("sync-media", false);
-        }
+        const data = await post("/api/sync-media", { limit: 25 });
+        showAi(data);
+        await Promise.all([loadMedia(), loadStatus()]);
       }
 
       async function selectMedia(mediaId) {
-        if (!mediaId || mediaId === "unknown") return;
         selectedMediaId = mediaId;
-        document.getElementById("media-id").value = mediaId;
-        document.querySelectorAll(".media").forEach((el) => {
-          el.classList.toggle("selected", el.dataset.mediaId === mediaId);
-        });
         const [postData, commentsData] = await Promise.all([
           request(`/api/media/${mediaId}`),
           request(`/api/media/${mediaId}/comments`)
         ]);
-        renderPostDetail(postData.media);
-        renderComments(commentsData.comments);
+        renderPostDetail(postData.media, postData.reading, postData.tasks ?? []);
+        renderComments(commentsData.comments ?? []);
+      }
+
+      function mediaCard(item) {
+        const image = item.thumbnailUrl || item.mediaUrl || "";
+        return `
+          <div class="item media-item" data-media-id="${escapeHtml(item.mediaId)}">
+            ${image ? `<img class="thumb" src="${escapeHtml(image)}" alt="">` : `<div class="thumb"></div>`}
+            <div>
+              <div class="line">
+                <strong>${escapeHtml(item.mediaProductType || item.mediaType || "投稿")}</strong>
+                <span class="badge ${item.active ? "good" : ""}">${item.active ? "対象" : "対象外"}</span>
+              </div>
+              <p><code>${escapeHtml(item.mediaId)}</code></p>
+              <p class="muted">コメント ${item.commentsCount ?? "-"} / いいね ${item.likeCount ?? "-"}</p>
+              <p class="caption">${escapeHtml(item.caption || "キャプションなし")}</p>
+            </div>
+          </div>
+        `;
+      }
+
+      function renderPostDetail(item, reading, tasks) {
+        const image = item.thumbnailUrl || item.mediaUrl || "";
+        document.getElementById("post-detail").innerHTML = `
+          <div class="media-item item">
+            ${image ? `<img class="thumb" src="${escapeHtml(image)}" alt="">` : `<div class="thumb"></div>`}
+            <div>
+              <div class="line">
+                <h3>${escapeHtml(item.flowName || "自動化なし")}</h3>
+                <span class="badge ${item.active ? "good" : ""}">${item.active ? "対象リール" : "対象外"}</span>
+              </div>
+              <p><code>${escapeHtml(item.mediaId)}</code></p>
+              <p class="muted">目印: ${escapeHtml(item.matchedMarker || "なし")}</p>
+              <p class="caption">${escapeHtml(item.caption || "キャプションなし")}</p>
+              ${item.permalink ? `<a href="${escapeHtml(item.permalink)}" target="_blank" rel="noreferrer">Instagramで開く</a>` : ""}
+            </div>
+          </div>
+        `;
+        document.getElementById("post-reading").textContent = reading
+          ? `テーマ: ${reading.theme}\nカード: ① ${reading.cards?.["1"]} / ② ${reading.cards?.["2"]} / ③ ${reading.cards?.["3"]}\n\n${reading.rawText || Object.values(reading.readings ?? {}).join("\n\n")}`
+          : "鑑定文はまだ生成されていません。";
+        document.getElementById("post-tasks").innerHTML =
+          tasks.map(taskCard).join("") || `<p class="muted">この投稿のタスクはまだありません。</p>`;
+        document.querySelectorAll("#post-tasks [data-task-id]").forEach((el) => {
+          el.addEventListener("click", () => selectTask(el.dataset.taskId));
+        });
+      }
+
+      async function generateReading() {
+        if (!selectedMediaId) return showAi({ ok: false, error: "先に投稿を選択してください" });
+        const data = await post("/api/ai/generate-media-reading", { mediaId: selectedMediaId });
+        showAi(data);
+        await selectMedia(selectedMediaId);
       }
 
       async function syncComments() {
-        if (!selectedMediaId) {
-          showTest({ ok: false, error: "先に投稿を選択してください。" });
-          return;
-        }
-        setBusy("sync-comments", true);
-        try {
-          showTest(await post(`/api/media/${selectedMediaId}/sync-comments`, { limit: 50 }));
-          await selectMedia(selectedMediaId);
-          await loadStatus();
-        } catch (error) {
-          showError(error);
-        } finally {
-          setBusy("sync-comments", false);
-        }
+        if (!selectedMediaId) return showAi({ ok: false, error: "先に投稿を選択してください" });
+        const data = await post(`/api/media/${selectedMediaId}/sync-comments`, { limit: 50 });
+        showAi(data);
+        await selectMedia(selectedMediaId);
       }
 
       async function showRawComments() {
-        if (!selectedMediaId) {
-          showTest({ ok: false, error: "先に投稿を選択してください。" });
-          return;
-        }
-        setBusy("raw-comments", true);
-        try {
-          const data = await request(`/api/media/${selectedMediaId}/comments/raw`);
-          lastRawJson = JSON.stringify(data, null, 2);
-          document.getElementById("raw-result").textContent = lastRawJson;
-          document.getElementById("raw-box").classList.add("open");
-        } catch (error) {
-          lastRawJson = JSON.stringify({ ok: false, error: error instanceof Error ? error.message : String(error) }, null, 2);
-          document.getElementById("raw-result").textContent = lastRawJson;
-          document.getElementById("raw-box").classList.add("open");
-        } finally {
-          setBusy("raw-comments", false);
-        }
+        if (!selectedMediaId) return showAi({ ok: false, error: "先に投稿を選択してください" });
+        const data = await request(`/api/media/${selectedMediaId}/comments/raw`);
+        showAi(data);
       }
 
-      function copyRawJson() {
-        navigator.clipboard.writeText(lastRawJson || document.getElementById("raw-result").textContent);
+      function renderComments(comments) {
+        document.getElementById("comment-list").innerHTML =
+          comments.map((comment) => `
+            <div class="item ${comment.isOwnerComment ? "dim" : ""}">
+              <div class="line">
+                <strong>${escapeHtml(commentIdentity(comment))}</strong>
+                <span class="badge ${statusClass(comment.automationStatus)}">${escapeHtml(statusLabel(comment.automationStatus))}</span>
+              </div>
+              <p class="caption">${escapeHtml(comment.text || "")}</p>
+              <p class="muted">番号: <strong>${escapeHtml(comment.choice || "-")}</strong></p>
+              <p class="muted">comment_id: <code>${escapeHtml(comment.commentId || "返信不可")}</code></p>
+              <p class="muted">media_id: <code>${escapeHtml(comment.mediaId || "投稿不明")}</code></p>
+              ${comment.userId ? `<p class="muted">User ID: <code>${escapeHtml(comment.userId)}</code></p>` : `<p class="muted">ユーザー名未取得。ただしcomment_idがあればPrivate Replyは可能です。</p>`}
+              ${comment.publicReply ? `<p class="muted">公開返信: ${escapeHtml(comment.publicReply)}</p>` : ""}
+              ${comment.privateReply ? `<p class="muted">DM本文: ${escapeHtml(comment.privateReply.slice(0, 140))}${comment.privateReply.length > 140 ? "..." : ""}</p>` : ""}
+              ${comment.errorMessage ? `<p class="bad-text">${escapeHtml(comment.errorMessage)}</p>` : ""}
+              <div class="actions">
+                <button data-copy="${escapeHtml(comment.commentId || "")}">comment_idをコピー</button>
+                <button data-copy="${escapeHtml(comment.mediaId || "")}">media_idをコピー</button>
+                <button data-refresh-comment="${escapeHtml(comment.commentId || "")}">このコメントを再取得</button>
+              </div>
+            </div>
+          `).join("") || `<p class="muted">保存済みコメントはありません。</p>`;
+        document.querySelectorAll("[data-copy]").forEach((el) => {
+          el.addEventListener("click", () => copyValue(el.dataset.copy));
+        });
+        document.querySelectorAll("[data-refresh-comment]").forEach((el) => {
+          el.addEventListener("click", () => refreshComment(el.dataset.refreshComment));
+        });
       }
 
-      function closeRawJson() {
-        document.getElementById("raw-box").classList.remove("open");
+      async function refreshComment(commentId) {
+        if (!commentId) return showAi({ ok: false, error: "comment_idがありません" });
+        const data = await post(`/api/comments/${commentId}/refresh`, {});
+        showAi(data);
+        if (selectedMediaId) await selectMedia(selectedMediaId);
       }
 
-      async function dryRunComment() {
-        setBusy("dry-run", true);
-        try {
-          showTest(await post("/api/dry-run-comment", {
-            mediaId: document.getElementById("media-id").value,
-            text: document.getElementById("comment-text").value
-          }));
-        } catch (error) {
-          showError(error);
-        } finally {
-          setBusy("dry-run", false);
-        }
+      async function checkAi() {
+        showAi(await post("/api/ai/check", {}));
       }
 
-      async function checkMarker() {
-        setBusy("check-marker", true);
-        try {
-          showTest(await post("/api/test-media", { mediaId: document.getElementById("media-id").value }));
-        } catch (error) {
-          showError(error);
-        } finally {
-          setBusy("check-marker", false);
-        }
+      async function testChoiceAi() {
+        showAi(await post("/api/ai/test-choice", { text: document.getElementById("choice-test-text").value }));
+      }
+
+      async function dryRun() {
+        if (!selectedMediaId) return showAi({ ok: false, error: "先に投稿を選択してください" });
+        showAi(await post("/api/dry-run-comment", {
+          mediaId: selectedMediaId,
+          text: document.getElementById("choice-test-text").value
+        }));
       }
 
       async function exchangeInstagramToken() {
-        setBusy("ig-exchange-token", true);
-        try {
-          const data = await post("/api/instagram/exchange-token", {
-            shortToken: document.getElementById("ig-short-token").value
-          });
-          if (data.accessToken) document.getElementById("ig-long-token").value = data.accessToken;
-          showToken(formatTokenResult(data));
-        } catch (error) {
-          showTokenError(error);
-        } finally {
-          setBusy("ig-exchange-token", false);
-        }
+        const data = await post("/api/instagram/exchange-token", {
+          shortToken: document.getElementById("ig-short-token").value
+        });
+        if (data.accessToken) document.getElementById("ig-long-token").value = data.accessToken;
+        showToken(data);
       }
 
       async function refreshInstagramToken() {
-        setBusy("ig-refresh-token", true);
-        try {
-          const data = await post("/api/instagram/refresh-token", {
-            longToken: document.getElementById("ig-long-token").value
-          });
-          if (data.accessToken) document.getElementById("ig-long-token").value = data.accessToken;
-          showToken(formatTokenResult(data));
-        } catch (error) {
-          showTokenError(error);
-        } finally {
-          setBusy("ig-refresh-token", false);
-        }
+        const data = await post("/api/instagram/refresh-token", {
+          longToken: document.getElementById("ig-long-token").value
+        });
+        if (data.accessToken) document.getElementById("ig-long-token").value = data.accessToken;
+        showToken(data);
       }
 
       async function checkInstagramToken() {
-        setBusy("ig-check-token", true);
-        try {
-          const tokenValue =
-            document.getElementById("ig-long-token").value ||
-            document.getElementById("ig-short-token").value;
-          const data = await post("/api/instagram/check-token", { token: tokenValue });
-          showToken(data);
-        } catch (error) {
-          showTokenError(error);
-        } finally {
-          setBusy("ig-check-token", false);
-        }
+        const tokenValue = document.getElementById("ig-long-token").value || document.getElementById("ig-short-token").value;
+        showToken(await post("/api/instagram/check-token", { token: tokenValue }));
       }
 
       function copyInstagramToken() {
         navigator.clipboard.writeText(document.getElementById("ig-long-token").value);
       }
 
-      async function toggleFlow(flowId, enabled) {
-        try {
-          await post(`/api/flows/${flowId}/toggle`, { enabled });
-          await Promise.all([loadFlows(), loadStatus()]);
-        } catch (error) {
-          showError(error);
-        }
+      function copyValue(value) {
+        if (!value) return showAi({ ok: false, error: "コピーする値がありません" });
+        navigator.clipboard.writeText(value);
+        showAi({ ok: true, copied: value });
       }
 
-      async function saveFlowReplies(flowId) {
-        const container = document.querySelector(`[data-flow="${cssValue(flowId)}"]`);
-        if (!container) return;
-
-        const choices = {};
-        for (const choice of ["1", "2", "3"]) {
-          choices[choice] = {
-            publicRepliesText: container.querySelector(`[data-public-replies="${choice}"]`)?.value ?? "",
-            privateReply: container.querySelector(`[data-private-reply="${choice}"]`)?.value ?? ""
-          };
-        }
-
-        try {
-          const data = await put(`/api/flows/${flowId}/replies`, { choices });
-          showTest({ ok: true, message: "公開返信バリエーションを保存しました", flow: data.flow });
-          await loadFlows();
-        } catch (error) {
-          showError(error);
-        }
+      function copyWebhookUrl() {
+        const url = `${location.origin}/webhook`;
+        navigator.clipboard.writeText(url);
+        showAi({ ok: true, webhookUrl: url });
       }
 
       async function request(path) {
         const response = await fetch(api(path));
-        if (!response.ok) throw new Error(await response.text());
-        return response.json();
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || response.statusText);
+        return data;
       }
 
       async function post(path, body) {
@@ -948,222 +1036,12 @@
         return data;
       }
 
-      function flowCard(flow) {
-        const choices = ["1", "2", "3"]
-          .map((choice) => {
-            const reply = flow.choices?.[choice] ?? {};
-            const repliesText = publicRepliesFor(reply).join("\n");
-            return `
-              <div class="reply-editor">
-                <div class="line">
-                  <strong>${choice}番の公開返信</strong>
-                  <span class="muted">1行=1パターン</span>
-                </div>
-                <textarea data-public-replies="${choice}">${escapeHtml(repliesText)}</textarea>
-                <div class="field">
-                  <label>DM本文 固定</label>
-                  <textarea data-private-reply="${choice}" readonly>${escapeHtml(reply.privateReply ?? "")}</textarea>
-                </div>
-              </div>
-            `;
-          })
-          .join("");
-        return `
-          <div class="flow" data-flow="${escapeHtml(flow.id)}">
-            <div class="line">
-              <div>
-                <h3>${escapeHtml(flow.name)}</h3>
-                <p class="muted"><code>${escapeHtml(flow.marker)}</code> / 紐づき ${flow.linkedMediaCount ?? 0}件</p>
-              </div>
-              <span class="badge ${flow.enabled ? "good" : "bad"}">${flow.enabled ? "稼働中" : "停止中"}</span>
-            </div>
-            ${choices}
-            <div class="row-actions">
-              <button class="primary" data-save-flow="${escapeHtml(flow.id)}">返信バリエーションを保存</button>
-              <button data-toggle-flow="${escapeHtml(flow.id)}" data-enabled="${flow.enabled ? "true" : "false"}">
-                ${flow.enabled ? "フローを停止" : "フローを稼働"}
-              </button>
-            </div>
-          </div>
-        `;
-      }
-
-      function mediaCard(item) {
-        const image = item.thumbnailUrl || item.mediaUrl || "";
-        const active = item.active ? "good" : "";
-        return `
-          <div class="media ${selectedMediaId === item.mediaId ? "selected" : ""}" data-media-id="${escapeHtml(item.mediaId)}">
-            ${image ? `<img class="thumb" src="${escapeHtml(image)}" alt="">` : `<div class="thumb"></div>`}
-            <div>
-              <div class="line">
-                <div>
-                  <strong>${escapeHtml(item.mediaProductType || item.mediaType || "投稿")}</strong>
-                  <p class="muted">${escapeHtml(formatDate(item.timestamp))}</p>
-                </div>
-                <span class="badge ${active}">${item.active ? "対象" : "対象外"}</span>
-              </div>
-              <p><code>${escapeHtml(item.mediaId)}</code></p>
-              <p class="muted">コメント ${item.commentsCount ?? "-"} / いいね ${item.likeCount ?? "-"}</p>
-              <p class="caption">${escapeHtml(item.caption || "キャプションなし")}</p>
-            </div>
-          </div>
-        `;
-      }
-
-      function renderWebhookToday(items) {
-        const target = document.getElementById("webhook-today-list");
-        target.innerHTML =
-          items.map(webhookTodayCard).join("") ||
-          `<p class="muted">今日はまだWebhookで受けたコメントがありません。</p>`;
-        target.querySelectorAll("[data-webhook-media-id]").forEach((el) => {
-          el.addEventListener("click", () => selectMedia(el.dataset.webhookMediaId));
-        });
-      }
-
-      function webhookTodayCard(item) {
-        const image = item.thumbnailUrl || item.mediaUrl || "";
-        const mediaId = item.mediaId || "";
-        return `
-          <div class="webhook-item" data-webhook-media-id="${escapeHtml(mediaId)}">
-            ${image ? `<img class="webhook-thumb" src="${escapeHtml(image)}" alt="">` : `<div class="webhook-thumb"></div>`}
-            <div>
-              <div class="line">
-                <div>
-                  <strong>${escapeHtml(item.flowName || item.mediaProductType || item.mediaType || "投稿情報未取得")}</strong>
-                  <p class="muted">最終受信: ${escapeHtml(formatDate(item.lastReceivedAt))}</p>
-                </div>
-                <span class="badge ${item.active ? "good" : ""}">${item.count ?? 0}件</span>
-              </div>
-              <p><code>${escapeHtml(mediaId || "media_idなし")}</code></p>
-              <p class="muted">${item.active ? "対象リール" : "対象外/未判定"} ${item.matchedMarker ? `/ ${escapeHtml(item.matchedMarker)}` : ""}</p>
-              <p class="caption">${escapeHtml(item.caption || "キャプション未取得。Webhook受信後の投稿取得に失敗している可能性があります。")}</p>
-            </div>
-          </div>
-        `;
-      }
-
-      function renderPostDetail(item) {
-        const image = item.thumbnailUrl || item.mediaUrl || "";
-        document.getElementById("post-detail").innerHTML = `
-          <div class="media selected">
-            ${image ? `<img class="thumb" src="${escapeHtml(image)}" alt="">` : `<div class="thumb"></div>`}
-            <div>
-              <div class="line">
-                <h3>${escapeHtml(item.flowName || "自動化なし")}</h3>
-                <span class="badge ${item.active ? "good" : ""}">${item.active ? "対象リール" : "対象外"}</span>
-              </div>
-              <p><code>${escapeHtml(item.mediaId)}</code></p>
-              <p class="muted">目印: ${escapeHtml(item.matchedMarker || "なし")}</p>
-              <p class="caption">${escapeHtml(item.caption || "キャプションなし")}</p>
-              ${item.permalink ? `<a href="${escapeHtml(item.permalink)}" target="_blank" rel="noreferrer">Instagramで開く</a>` : ""}
-            </div>
-          </div>
-        `;
-      }
-
-      function renderComments(comments) {
-        document.getElementById("comment-list").innerHTML =
-          comments.map(commentCard).join("") || `<p class="muted">保存済みコメントはありません。「コメントを取得」を押してください。</p>`;
-        document.querySelectorAll("[data-copy]").forEach((button) => {
-          button.addEventListener("click", () => navigator.clipboard.writeText(button.dataset.copy ?? ""));
-        });
-        document.querySelectorAll("[data-toggle-comment]").forEach((button) => {
-          button.addEventListener("click", () => {
-            button.closest(".comment")?.classList.toggle("open");
-          });
-        });
-        document.querySelectorAll("[data-refresh-comment]").forEach((button) => {
-          button.addEventListener("click", () => refreshComment(button.dataset.refreshComment));
-        });
-      }
-
-      function commentCard(comment) {
-        const owner = comment.isOwnerComment ? " owner" : "";
-        const identity = commenterLabel(comment);
-        const replyPossible = Boolean(comment.commentId);
-        const mediaKnown = Boolean(comment.mediaId);
-        return `
-          <div class="comment${owner}">
-            <div class="line">
-              <div>
-                <strong>${escapeHtml(identity.label)}</strong>
-                <span class="muted">${escapeHtml(formatDate(comment.createdAt || comment.firstSeenAt))}</span>
-                ${comment.userId ? `<span class="muted">User ID: <code>${escapeHtml(comment.userId)}</code></span>` : ""}
-              </div>
-              <span class="badge ${statusClass(comment.automationStatus)}">${escapeHtml(statusLabel(comment.automationStatus))}</span>
-            </div>
-            <p class="caption">${escapeHtml(comment.text || "")}</p>
-            <div class="id-grid">
-              <div class="id-row">
-                <span>comment_id</span>
-                <code>${escapeHtml(comment.commentId || "返信不可")}</code>
-              </div>
-              <div class="id-row">
-                <span>media_id</span>
-                <code>${escapeHtml(comment.mediaId || "投稿不明")}</code>
-              </div>
-              <div class="id-row">
-                <span>ユーザー情報</span>
-                <span>${escapeHtml(identity.note)}</span>
-              </div>
-              <div class="id-row">
-                <span>送信可否</span>
-                <span class="${replyPossible && mediaKnown ? "ok" : "bad-text"}">${escapeHtml(sendabilityLabel(comment))}</span>
-              </div>
-            </div>
-            <div class="line">
-              <span>番号: <span class="choice">${escapeHtml(comment.choice || "-")}</span></span>
-              <span class="muted">${comment.publicReply ? "公開返信あり" : ""} ${comment.privateReply ? "DM文あり" : ""}</span>
-            </div>
-            <div class="row-actions">
-              <button class="mini" data-copy="${escapeHtml(comment.commentId || "")}">comment_idをコピー</button>
-              <button class="mini" data-copy="${escapeHtml(comment.mediaId || "")}">media_idをコピー</button>
-              <button class="mini" data-toggle-comment="${escapeHtml(comment.commentId || "")}">詳細を表示</button>
-              <button class="mini" data-refresh-comment="${escapeHtml(comment.commentId || "")}" ${comment.commentId ? "" : "disabled"}>このコメントを再取得</button>
-            </div>
-            <div class="comment-detail">
-              <div class="kv">
-                ${row("保存済み公開返信", escapeHtml(comment.publicReply || "なし"))}
-                ${row("保存済みDM本文", escapeHtml(comment.privateReply || "なし"))}
-                ${row("APIエラー", comment.errorMessage ? `<span class="bad-text">${escapeHtml(comment.errorMessage)}</span>` : "なし")}
-                ${row("作成日時", escapeHtml(formatDate(comment.createdAt)))}
-                ${row("初回保存", escapeHtml(formatDate(comment.firstSeenAt)))}
-                ${row("更新日時", escapeHtml(formatDate(comment.updatedAt)))}
-              </div>
-            </div>
-          </div>
-        `;
-      }
-
-      async function refreshComment(commentId) {
-        if (!commentId) return;
-        try {
-          showTest(await post(`/api/comments/${commentId}/refresh`, {}));
-          if (selectedMediaId) await selectMedia(selectedMediaId);
-        } catch (error) {
-          showError(error);
-          if (selectedMediaId) await selectMedia(selectedMediaId);
-        }
-      }
-
-      function renderEvents(events) {
-        document.getElementById("events-body").innerHTML =
-          events.map((event) => `
-            <tr>
-              <td>${escapeHtml(formatDate(event.at))}</td>
-              <td>${escapeHtml(eventStatusLabel(event.status))}</td>
-              <td><code>${escapeHtml(event.mediaId ?? "")}</code></td>
-              <td><code>${escapeHtml(event.commentId ?? "")}</code></td>
-              <td>${escapeHtml(event.choice ?? "")}</td>
-              <td>${escapeHtml(detailLabel(event))}</td>
-            </tr>
-          `).join("") || `<tr><td colspan="6" class="muted">まだ履歴はありません。</td></tr>`;
-      }
-
-      function copyWebhookUrl() {
-        const url = `${location.origin}/webhook`;
-        navigator.clipboard.writeText(url);
-        showTest({ ok: true, webhookUrl: url });
+      function renderEnv(env, database) {
+        const rows = Object.entries(env ?? {}).map(([key, value]) =>
+          row(labelForEnv(key), typeof value === "boolean" ? status(value) : escapeHtml(value))
+        );
+        if (database?.disabledReason) rows.push(row("Postgresエラー", `<span class="bad-text">${escapeHtml(database.disabledReason)}</span>`));
+        document.getElementById("env").innerHTML = rows.join("");
       }
 
       function row(label, value) {
@@ -1174,126 +1052,59 @@
         return value ? '<span class="ok">設定済み</span>' : '<span class="bad-text">未設定</span>';
       }
 
-      function publicRepliesFor(reply) {
-        if (Array.isArray(reply?.publicReplies)) {
-          return reply.publicReplies.map((item) => String(item).trim()).filter(Boolean);
-        }
-        return reply?.publicReply ? [String(reply.publicReply).trim()].filter(Boolean) : [];
-      }
-
-      function commenterLabel(comment) {
-        if (comment.username) {
-          return {
-            label: `@${comment.username}`,
-            note: comment.userId ? "username / User ID 取得済み" : "username取得済み"
-          };
-        }
-        if (comment.userId) {
-          return {
-            label: "ユーザーIDのみ取得",
-            note: "username未取得 / User ID取得済み"
-          };
-        }
-        return {
-          label: "ユーザー情報未取得",
-          note: "ユーザー名未取得。ただしcomment_idがあればPrivate Replyは可能"
-        };
-      }
-
-      function sendabilityLabel(comment) {
-        if (!comment.commentId && !comment.mediaId) return "返信不可 / 投稿不明";
-        if (!comment.commentId) return "返信不可";
-        if (!comment.mediaId) return "投稿不明";
-        if (comment.isOwnerComment) return "自分のコメントなので送信対象外";
-        return "comment_idあり。Private Reply可能";
-      }
-
       function statusLabel(value) {
         return {
-          unprocessed: "未処理",
           received: "受信",
+          choice_detected: "番号判定済み",
+          paused: "自動化OFF",
+          ready_to_send: "送信準備済み",
+          sent: "DM送信済み",
           dm_sent: "DM送信済み",
-          owner_comment: "自分のコメント",
-          ignored: "対象外コメント",
+          error: "エラー",
+          ignored: "対象外",
           outside_target: "対象外リール",
           already_processed: "送信済み",
           flow_paused: "フロー停止中",
-          error: "エラー"
+          owner_comment: "自分のコメント",
+          retrying: "再実行中",
+          unprocessed: "未処理"
         }[value] || value || "未処理";
       }
 
+      function commentIdentity(comment) {
+        if (comment.username) return `@${comment.username}`;
+        if (comment.userId) return "ユーザーIDのみ取得";
+        return "ユーザー情報未取得";
+      }
+
       function statusClass(value) {
-        return value === "dm_sent" ? "good" : value === "error" ? "bad" : "";
-      }
-
-      function eventStatusLabel(value) {
-        return { received: "受信", ignored: "無視", sent: "送信済み", error: "エラー", sync: "同期" }[value] || value || "";
-      }
-
-      function detailLabel(event) {
-        const details = {
-          owner_comment: "自分のコメントなので送信しません",
-          missing_id_or_choice: "コメント本文から1/2/3を判定できませんでした",
-          already_processed: "すでに返信済みです",
-          no_caption_marker: "対象リールではありません",
-          flow_paused: "フローが停止中です"
-        };
-        return details[event.reason] || event.message || event.marker || event.text || "";
+        return ["sent", "dm_sent", "success"].includes(value) ? "good" : ["error", "bad"].includes(value) ? "bad" : ["paused", "skipped", "outside_target"].includes(value) ? "warn" : "";
       }
 
       function labelForEnv(key) {
         return {
           VERIFY_TOKEN: "Webhook認証トークン",
-          IG_USER_ID: "InstagramアカウントID",
+          IG_USER_ID: "Instagram Account ID",
           IG_USERNAME: "自分のInstagramユーザー名",
-          ACCESS_TOKEN: "Metaアクセストークン",
+          ACCESS_TOKEN: "Instagram Access Token",
           ADMIN_AUTH_ENABLED: "管理画面認証",
           ADMIN_TOKEN: "管理画面トークン",
           DATABASE_URL: "Postgres接続",
           APP_SECRET: "Metaアプリシークレット",
-          GRAPH_BASE_URL: "API接続先",
-          GRAPH_API_VERSION: "APIバージョン"
+          DEEPSEEK_API_KEY: "DeepSeek API Key",
+          DEEPSEEK_BASE_URL: "DeepSeek API URL",
+          DEEPSEEK_MODEL: "DeepSeek Model",
+          GRAPH_BASE_URL: "Instagram API URL",
+          GRAPH_API_VERSION: "Instagram API Version"
         }[key] || key;
       }
 
-      function showTest(data) {
-        document.getElementById("test-result").textContent = JSON.stringify(data, null, 2);
-      }
-
-      function showError(error) {
-        showTest({ ok: false, error: error instanceof Error ? error.message : String(error) });
+      function showAi(data) {
+        document.getElementById("ai-result").textContent = JSON.stringify(data, null, 2);
       }
 
       function showToken(data) {
-        document.getElementById("token-result").textContent =
-          typeof data === "string" ? data : JSON.stringify(data, null, 2);
-      }
-
-      function showTokenError(error) {
-        showToken({ ok: false, error: error instanceof Error ? error.message : String(error) });
-      }
-
-      function formatTokenResult(data) {
-        return JSON.stringify(
-          {
-            ok: data.ok,
-            tokenType: data.tokenType,
-            expiresIn: data.expiresIn,
-            expiresAt: data.expiresAt,
-            note: data.note,
-            accessToken: data.accessToken
-          },
-          null,
-          2
-        );
-      }
-
-      function setBusy(id, busy) {
-        document.getElementById(id).disabled = busy;
-      }
-
-      function cssValue(value) {
-        return window.CSS?.escape ? CSS.escape(value) : String(value).replaceAll('"', '\\"');
+        document.getElementById("token-result").textContent = JSON.stringify(data, null, 2);
       }
 
       function formatDate(value) {

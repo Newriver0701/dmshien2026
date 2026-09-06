@@ -1,17 +1,26 @@
 import "dotenv/config";
 import express from "express";
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   findDbFlowByMarker,
+  addTaskStep,
+  createAutomationTask,
+  getAutomationTask,
+  getAutomationTaskSteps,
+  getAutomationTasks,
+  getAutomationTasksForMedia,
   getComment,
   getFlows,
   getLinkedFlowForMedia,
   getMediaComments,
   getMediaPost,
   getMediaPosts,
+  getMediaTarotReading,
   getRecentEvents,
+  getSettings,
   getStats,
   getWebhookTodaySummary,
   getDatabaseStatus,
@@ -19,14 +28,18 @@ import {
   hasProcessedComment,
   initDatabase,
   saveEvent,
+  saveMediaTarotReading,
   saveProcessedComment,
   setFlowEnabled,
+  updateAutomationTask,
   updateFlowChoices,
+  updateSettings,
   updateCommentStatus,
   upsertMediaComment,
   upsertMediaPost
 } from "./db.js";
 import { findFlow, flows, normalizeChoices, normalizePublicReplies, parseChoice } from "./flows.js";
+import { pickTarotCards } from "./tarot.js";
 
 const app = express();
 app.use(express.json());
@@ -44,7 +57,10 @@ const {
   APP_SECRET,
   IG_USERNAME,
   GRAPH_BASE_URL = "https://graph.instagram.com",
-  GRAPH_API_VERSION = "v26.0"
+  GRAPH_API_VERSION = "v26.0",
+  DEEPSEEK_API_KEY,
+  DEEPSEEK_BASE_URL = "https://api.deepseek.com",
+  DEEPSEEK_MODEL = "deepseek-v4-flash"
 } = process.env;
 
 const processedComments = new Set();
@@ -110,9 +126,11 @@ app.get("/api/status", requireAdmin, async (_req, res) => {
   const dbEvents = await getRecentEvents(100);
   const dbWebhookToday = await getWebhookTodaySummary(20);
   const memoryWebhookToday = getMemoryWebhookTodaySummary();
+  const settings = await getSettings();
 
   res.json({
     ok: true,
+    settings,
     env: {
       VERIFY_TOKEN: Boolean(VERIFY_TOKEN),
       IG_USER_ID: Boolean(IG_USER_ID),
@@ -122,6 +140,9 @@ app.get("/api/status", requireAdmin, async (_req, res) => {
       DATABASE_URL: Boolean(DATABASE_URL),
       APP_SECRET: Boolean(APP_SECRET),
       IG_USERNAME: Boolean(IG_USERNAME),
+      DEEPSEEK_API_KEY: Boolean(DEEPSEEK_API_KEY),
+      DEEPSEEK_BASE_URL,
+      DEEPSEEK_MODEL,
       GRAPH_BASE_URL,
       GRAPH_API_VERSION
     },
@@ -135,6 +156,7 @@ app.get("/api/status", requireAdmin, async (_req, res) => {
       sentToday: processedComments.size,
       errorsToday: recentEvents.filter((event) => event.status === "error").length,
       webhookToday: memoryWebhookToday.reduce((total, item) => total + item.count, 0),
+      tasksToday: 0,
       recentEvents: recentEvents.length
     },
     webhookTodayByMedia: dbWebhookToday ?? memoryWebhookToday,
@@ -144,6 +166,37 @@ app.get("/api/status", requireAdmin, async (_req, res) => {
 
 app.get("/api/flows", requireAdmin, async (_req, res) => {
   res.json({ ok: true, flows: normalizeFlowList((await getFlows()) ?? localFlows()) });
+});
+
+app.get("/api/settings", requireAdmin, async (_req, res) => {
+  res.json({ ok: true, settings: await getSettings() });
+});
+
+app.put("/api/settings", requireAdmin, async (req, res) => {
+  try {
+    const incoming = req.body?.settings ?? req.body ?? {};
+    const settings = {};
+
+    if (Object.hasOwn(incoming, "automationEnabled")) {
+      settings.automationEnabled = Boolean(incoming.automationEnabled);
+    }
+    if (Object.hasOwn(incoming, "aiChoiceEnabled")) {
+      settings.aiChoiceEnabled = Boolean(incoming.aiChoiceEnabled);
+    }
+    if (Object.hasOwn(incoming, "aiReadingEnabled")) {
+      settings.aiReadingEnabled = Boolean(incoming.aiReadingEnabled);
+    }
+    if (Object.hasOwn(incoming, "publicReplyTemplates")) {
+      settings.publicReplyTemplates = normalizeTemplates(incoming.publicReplyTemplates);
+      if (settings.publicReplyTemplates.length === 0) {
+        return res.status(400).json({ ok: false, error: "公開返信テンプレートを1つ以上入れてください" });
+      }
+    }
+
+    res.json({ ok: true, settings: await updateSettings(settings) });
+  } catch (error) {
+    res.status(500).json({ ok: false, error: errorMessage(error) });
+  }
 });
 
 app.post("/api/flows/:flowId/toggle", requireAdmin, async (req, res) => {
@@ -270,6 +323,78 @@ app.post("/api/instagram/check-token", requireAdmin, async (req, res) => {
   }
 });
 
+app.get("/api/tasks", requireAdmin, async (req, res) => {
+  const limit = Math.min(Number(req.query.limit ?? 100), 200);
+  res.json({ ok: true, tasks: (await getAutomationTasks(limit)) ?? [] });
+});
+
+app.get("/api/tasks/:taskId", requireAdmin, async (req, res) => {
+  const task = await getAutomationTask(req.params.taskId);
+  if (!task) return res.status(404).json({ ok: false, error: "task not found" });
+  res.json({ ok: true, task, steps: (await getAutomationTaskSteps(req.params.taskId)) ?? [] });
+});
+
+app.post("/api/tasks/:taskId/retry", requireAdmin, async (req, res) => {
+  try {
+    const task = await getAutomationTask(req.params.taskId);
+    if (!task) return res.status(404).json({ ok: false, error: "task not found" });
+    await addTaskStep(task.taskId, "retry", "started", "タスクを再実行します");
+    await updateAutomationTask(task.taskId, { status: "retrying", errorMessage: null });
+    const result = await runAutomationTask(task, { forceSend: true });
+    res.json({ ok: true, task: result });
+  } catch (error) {
+    await updateAutomationTask(req.params.taskId, { status: "error", errorMessage: errorMessage(error) });
+    await addTaskStep(req.params.taskId, "retry", "error", errorMessage(error));
+    res.status(500).json({ ok: false, error: errorMessage(error) });
+  }
+});
+
+app.post("/api/ai/check", requireAdmin, async (_req, res) => {
+  try {
+    const content = await deepseekText([
+      { role: "system", content: "Return only the plain text word ok." },
+      { role: "user", content: "ok" }
+    ], { maxTokens: 20 });
+    res.json({ ok: true, model: DEEPSEEK_MODEL, content });
+  } catch (error) {
+    res.status(500).json({ ok: false, error: errorMessage(error) });
+  }
+});
+
+app.post("/api/ai/test-choice", requireAdmin, async (req, res) => {
+  try {
+    const text = String(req.body?.text ?? "");
+    const sanitizedText = sanitizeText(text);
+    const ruleChoice = parseChoice(sanitizedText);
+    if (ruleChoice) {
+      return res.json({ ok: true, choice: ruleChoice, method: "rule", sanitizedText });
+    }
+
+    const choice = await detectChoiceWithAi(sanitizedText);
+    res.json({ ok: true, choice, method: choice === "unknown" ? "unknown" : "deepseek", sanitizedText });
+  } catch (error) {
+    res.status(500).json({ ok: false, error: errorMessage(error) });
+  }
+});
+
+app.post("/api/ai/generate-media-reading", requireAdmin, async (req, res) => {
+  try {
+    const mediaId = String(req.body?.mediaId ?? "").trim();
+    if (!mediaId) return res.status(400).json({ ok: false, error: "mediaId is required" });
+    let media = await getMediaPost(mediaId);
+    if (!media) {
+      const fetched = await getMedia(mediaId);
+      const flow = await findFlowForCaption(fetched.caption ?? "");
+      await upsertMediaPost(fetched, flow);
+      media = await getMediaPost(mediaId);
+    }
+    const reading = await generateAndSaveReading(media);
+    res.json({ ok: true, reading });
+  } catch (error) {
+    res.status(500).json({ ok: false, error: errorMessage(error) });
+  }
+});
+
 app.get("/api/latest-media", requireAdmin, async (req, res) => {
   try {
     const limit = Math.min(Number(req.query.limit ?? 10), 25);
@@ -325,7 +450,12 @@ app.post("/api/sync-media", requireAdmin, async (req, res) => {
 app.get("/api/media/:mediaId", requireAdmin, async (req, res) => {
   const media = await getMediaPost(req.params.mediaId);
   if (!media) return res.status(404).json({ ok: false, error: "media not found" });
-  res.json({ ok: true, media });
+  res.json({
+    ok: true,
+    media,
+    reading: await getMediaTarotReading(req.params.mediaId),
+    tasks: (await getAutomationTasksForMedia(req.params.mediaId)) ?? []
+  });
 });
 
 app.get("/api/media/:mediaId/comments", requireAdmin, async (req, res) => {
@@ -431,21 +561,30 @@ app.post("/api/dry-run-comment", requireAdmin, async (req, res) => {
       return res.status(400).json({ ok: false, error: "mediaId and text are required" });
     }
 
-    const choice = parseChoice(text);
+    const settings = await getSettings();
+    const sanitizedText = sanitizeText(text);
+    const choiceResult = await detectChoice(sanitizedText, settings);
+    const choice = choiceResult.choice === "unknown" ? null : choiceResult.choice;
     const flow = await getFlowForMedia(mediaId);
-    const reply = choice && flow ? pickReply(flow.choices[choice]) : null;
+    const reading = choice && flow ? await getMediaTarotReading(mediaId) : null;
+    const publicReply = choice ? pickPublicReply(settings.publicReplyTemplates, choice) : null;
+    const privateReply = choice ? reading?.readings?.[choice] ?? null : null;
 
     res.json({
       ok: true,
       mediaId,
       text,
+      sanitizedText,
       choice,
+      choiceMethod: choiceResult.method,
       matched: Boolean(flow),
       marker: flow?.marker ?? null,
-      wouldSend: Boolean(reply),
-      publicReply: reply?.publicReply ?? null,
-      publicReplies: flow && choice ? normalizePublicReplies(flow.choices[choice]) : [],
-      privateReply: reply?.privateReply ?? null
+      automationEnabled: settings.automationEnabled,
+      wouldSend: Boolean(settings.automationEnabled && choice && flow && privateReply),
+      needsReading: Boolean(choice && flow && !privateReply),
+      publicReply,
+      publicReplyTemplates: settings.publicReplyTemplates,
+      privateReply
     });
   } catch (error) {
     res.status(500).json({ ok: false, error: errorMessage(error) });
@@ -495,15 +634,26 @@ app.post("/webhook", (req, res) => {
 
 async function handleComment(comment) {
   const normalized = normalizeComment(comment);
-  const { commentId, mediaId, choice, username } = normalized;
+  const sanitizedText = sanitizeText(normalized.text);
+  const { commentId, mediaId, username } = normalized;
 
   addEvent({
     status: "received",
     commentId,
     mediaId,
     username,
-    text: normalized.text,
-    choice
+    text: normalized.text
+  });
+
+  const task = await createAutomationTask({
+    ...normalized,
+    sanitizedText,
+    status: "received"
+  });
+  await addTaskStep(task?.taskId, "webhook_received", "success", "Webhookコメントを受信しました", {
+    commentId,
+    mediaId,
+    text: normalized.text
   });
 
   const ownerComment = isOwnerComment(normalized);
@@ -511,7 +661,8 @@ async function handleComment(comment) {
     await upsertMediaComment({
       ...normalized,
       isOwnerComment: ownerComment,
-      automationStatus: ownerComment ? "owner_comment" : "received"
+      automationStatus: ownerComment ? "owner_comment" : "received",
+      choice: null
     });
   }
 
@@ -521,43 +672,100 @@ async function handleComment(comment) {
       reason: "user_info_missing",
       commentId,
       mediaId,
-      choice,
       message: "ユーザー情報未取得。comment_idがあればPrivate Replyは可能です"
     });
   }
 
   if (ownerComment) {
-    addEvent({ status: "ignored", reason: "owner_comment", commentId, mediaId, choice, username });
+    await updateAutomationTask(task?.taskId, { status: "ignored", errorMessage: "自分のコメントなので送信しません" });
+    await addTaskStep(task?.taskId, "owner_check", "skipped", "自分のコメントなので送信しません");
+    addEvent({ status: "ignored", reason: "owner_comment", commentId, mediaId, username });
     return;
   }
 
-  if (!commentId || !mediaId || !choice) {
+  if (!commentId || !mediaId) {
     await updateCommentStatus(commentId, "ignored");
-    addEvent({ status: "ignored", reason: "missing_id_or_choice", commentId, mediaId, choice });
+    await updateAutomationTask(task?.taskId, { status: "ignored", errorMessage: "comment_idまたはmedia_idがありません" });
+    await addTaskStep(task?.taskId, "required_ids", "error", "comment_idまたはmedia_idがありません");
+    addEvent({ status: "ignored", reason: "missing_id", commentId, mediaId });
     return;
   }
+
+  const settings = await getSettings();
+  const choiceResult = await detectChoice(sanitizedText, settings, task?.taskId);
+  const choice = choiceResult.choice === "unknown" ? null : choiceResult.choice;
+  await updateAutomationTask(task?.taskId, {
+    choice,
+    choiceMethod: choiceResult.method,
+    status: choice ? "choice_detected" : "ignored",
+    errorMessage: choice ? null : "番号を判定できませんでした"
+  });
+
+  await upsertMediaComment({
+    ...normalized,
+    text: sanitizedText || normalized.text,
+    choice,
+    isOwnerComment: false,
+    automationStatus: choice ? "received" : "ignored",
+    errorMessage: choice ? null : "番号を判定できませんでした"
+  });
+
+  if (!choice) {
+    await updateCommentStatus(commentId, "ignored", "番号を判定できませんでした");
+    addEvent({ status: "ignored", reason: "missing_id_or_choice", commentId, mediaId, choice: null });
+    return;
+  }
+
   if (processedComments.has(commentId) || (await hasProcessedComment(commentId))) {
     await updateCommentStatus(commentId, "already_processed");
+    await updateAutomationTask(task?.taskId, { status: "already_processed", errorMessage: "すでに返信済みです" });
+    await addTaskStep(task?.taskId, "duplicate_check", "skipped", "すでに返信済みです");
     addEvent({ status: "ignored", reason: "already_processed", commentId, mediaId, choice });
     return;
   }
 
   const flow = await getFlowForMedia(mediaId);
+  await addTaskStep(task?.taskId, "media_flow_check", flow ? "success" : "skipped", flow ? "対象フローを確認しました" : "対象リールではありません", {
+    marker: flow?.marker ?? null
+  });
   if (!flow) {
     await updateCommentStatus(commentId, "outside_target");
+    await updateAutomationTask(task?.taskId, { status: "outside_target", errorMessage: "対象リールではありません" });
     addEvent({ status: "ignored", reason: "no_caption_marker", commentId, mediaId, choice });
     return;
   }
   if (flow.enabled === false) {
     await updateCommentStatus(commentId, "flow_paused");
+    await updateAutomationTask(task?.taskId, { status: "flow_paused", errorMessage: "フローが停止中です" });
+    await addTaskStep(task?.taskId, "flow_enabled", "skipped", "フローが停止中です");
     addEvent({ status: "ignored", reason: "flow_paused", commentId, mediaId, choice });
     return;
   }
 
-  const reply = pickReply(flow.choices[choice]);
+  if (!settings.automationEnabled) {
+    await updateCommentStatus(commentId, "received");
+    await updateAutomationTask(task?.taskId, { status: "paused", errorMessage: "完全自動化がOFFです" });
+    await addTaskStep(task?.taskId, "automation_enabled", "skipped", "完全自動化がOFFなので送信しません");
+    addEvent({ status: "ignored", reason: "automation_disabled", commentId, mediaId, choice });
+    return;
+  }
+
   try {
-    await replyToComment(commentId, reply.publicReply);
-    await sendPrivateReply(commentId, reply.privateReply);
+    const result = await runAutomationTask(
+      {
+        ...(task ?? {}),
+        commentId,
+        mediaId,
+        username,
+        text: normalized.text,
+        sanitizedText,
+        choice,
+        choiceMethod: choiceResult.method
+      },
+      { forceSend: true, settings, flow }
+    );
+    console.log(`sent reply: media=${mediaId} comment=${commentId} choice=${choice}`);
+    return result;
   } catch (error) {
     addEvent({
       status: "error",
@@ -567,34 +775,285 @@ async function handleComment(comment) {
       message: error instanceof Error ? error.message : String(error)
     });
     await updateCommentStatus(commentId, "error", errorMessage(error));
-    await saveProcessedComment({
-      commentId,
-      mediaId,
-      choice,
-      username,
-      text: normalized.text,
-      publicReply: reply.publicReply,
-      privateReply: reply.privateReply,
-      status: "error",
-      errorMessage: errorMessage(error)
-    });
+    await updateAutomationTask(task?.taskId, { status: "error", errorMessage: errorMessage(error) });
+    await addTaskStep(task?.taskId, "automation_error", "error", errorMessage(error));
     throw error;
   }
+}
 
-  processedComments.add(commentId);
+async function runAutomationTask(task, options = {}) {
+  const settings = options.settings ?? (await getSettings());
+  const taskId = task.taskId;
+
+  if (!task.choice) {
+    const choiceResult = await detectChoice(task.sanitizedText ?? task.text ?? "", settings, taskId);
+    task.choice = choiceResult.choice === "unknown" ? null : choiceResult.choice;
+    task.choiceMethod = choiceResult.method;
+    await updateAutomationTask(taskId, {
+      choice: task.choice,
+      choiceMethod: task.choiceMethod,
+      status: task.choice ? "choice_detected" : "ignored",
+      errorMessage: task.choice ? null : "番号を判定できませんでした"
+    });
+  }
+
+  if (!task.choice) throw new Error("番号を判定できませんでした");
+
+  if (!options.forceSend && !settings.automationEnabled) {
+    await updateAutomationTask(taskId, { status: "paused", errorMessage: "完全自動化がOFFです" });
+    await addTaskStep(taskId, "automation_enabled", "skipped", "完全自動化がOFFなので送信しません");
+    return getAutomationTask(taskId);
+  }
+
+  const flow = options.flow ?? (await getFlowForMedia(task.mediaId));
+  if (!flow) throw new Error("対象リールではありません");
+
+  const media = (await getMediaPost(task.mediaId)) ?? (await getMedia(task.mediaId));
+  const reading = await getOrCreateMediaReading(media, taskId, settings);
+  const privateReply = reading?.readings?.[task.choice];
+  if (!privateReply) throw new Error(`${task.choice}番の鑑定文がありません`);
+
+  const publicReply = pickPublicReply(settings.publicReplyTemplates, task.choice);
+  await updateAutomationTask(taskId, {
+    status: "ready_to_send",
+    publicReply,
+    privateReply,
+    errorMessage: null
+  });
+  await addTaskStep(taskId, "reply_prepared", "success", "公開返信とDM本文を準備しました", {
+    publicReply,
+    privateReply
+  });
+
+  await replyToComment(task.commentId, publicReply);
+  await addTaskStep(taskId, "public_reply", "success", "公開コメント返信を送信しました", {
+    publicReply
+  });
+
+  await sendPrivateReply(task.commentId, privateReply);
+  await addTaskStep(taskId, "private_reply", "success", "Private Reply DMを送信しました", {
+    privateReply
+  });
+
+  processedComments.add(task.commentId);
   await saveProcessedComment({
-    commentId,
-    mediaId,
-    choice,
-    username,
-    text: normalized.text,
-    publicReply: reply.publicReply,
-    privateReply: reply.privateReply,
+    commentId: task.commentId,
+    mediaId: task.mediaId,
+    choice: task.choice,
+    username: task.username,
+    text: task.text,
+    publicReply,
+    privateReply,
     status: "sent"
   });
-  await updateCommentStatus(commentId, "dm_sent");
-  addEvent({ status: "sent", commentId, mediaId, choice, marker: flow.marker });
-  console.log(`sent reply: media=${mediaId} comment=${commentId} choice=${choice}`);
+  await updateCommentStatus(task.commentId, "dm_sent");
+  await updateAutomationTask(taskId, {
+    status: "sent",
+    publicReply,
+    privateReply,
+    errorMessage: null
+  });
+  addEvent({ status: "sent", commentId: task.commentId, mediaId: task.mediaId, choice: task.choice, marker: flow.marker });
+
+  return getAutomationTask(taskId);
+}
+
+async function detectChoice(text, settings, taskId = null) {
+  const ruleChoice = parseChoice(text);
+  if (ruleChoice) {
+    await addTaskStep(taskId, "choice_detection", "success", "ルールで番号を判定しました", {
+      choice: ruleChoice,
+      method: "rule"
+    });
+    return { choice: ruleChoice, method: "rule" };
+  }
+
+  if (!settings.aiChoiceEnabled) {
+    await addTaskStep(taskId, "choice_detection", "skipped", "番号を判定できませんでした");
+    return { choice: "unknown", method: "unknown" };
+  }
+
+  const choice = await detectChoiceWithAi(text);
+  await addTaskStep(taskId, "choice_detection", choice === "unknown" ? "skipped" : "success", "DeepSeekで番号を判定しました", {
+    choice,
+    method: choice === "unknown" ? "unknown" : "deepseek"
+  });
+  return { choice, method: choice === "unknown" ? "unknown" : "deepseek" };
+}
+
+async function detectChoiceWithAi(text) {
+  const result = await deepseekJson([
+    {
+      role: "system",
+      content:
+        "あなたはInstagramコメントの番号判定AIです。必ずjsonだけを返してください。出力は {\"choice\":\"1\"}, {\"choice\":\"2\"}, {\"choice\":\"3\"}, {\"choice\":\"unknown\"} のどれかだけです。"
+    },
+    {
+      role: "user",
+      content: `comment_text = ${JSON.stringify(text)}
+
+タスク: comment_text の内容から、ユーザーが選んだ番号を判定してください。
+
+判定ルール:
+- 1: 1, １, ①, ❶, Ⅰ, 一, いち, 1番, 1です, 1で, 1お願いします, １番で, No.1
+- 2: 2, ２, ②, ❷, Ⅱ, 二, に, 2番, 2です, 2で, 2お願いします, ２番で, No.2
+- 3: 3, ３, ③, ❸, Ⅲ, 三, さん, 3番, 3です, 3で, 3お願いします, ３番で, No.3
+- 複数候補、否定、日付/時間、意味不明は unknown
+
+jsonのみで返してください。`
+    }
+  ], { maxTokens: 80 });
+
+  return ["1", "2", "3"].includes(result.choice) ? result.choice : "unknown";
+}
+
+async function getOrCreateMediaReading(media, taskId = null, settings = null) {
+  const theme = extractTheme(media?.caption ?? "");
+  const hash = hashText(theme);
+  const existing = media?.id || media?.mediaId ? await getMediaTarotReading(media.id ?? media.mediaId) : null;
+
+  if (existing && existing.captionHash === hash && existing.readings?.["1"] && existing.readings?.["2"] && existing.readings?.["3"]) {
+    await addTaskStep(taskId, "reading_ready", "success", "保存済み鑑定文を使用します", {
+      mediaId: existing.mediaId
+    });
+    return existing;
+  }
+
+  if (settings && settings.aiReadingEnabled === false) {
+    await addTaskStep(taskId, "reading_ready", "skipped", "AI鑑定文生成がOFFです");
+    throw new Error("AI鑑定文生成がOFFです");
+  }
+
+  const reading = await generateAndSaveReading(media, taskId);
+  await addTaskStep(taskId, "reading_ready", "success", "DeepSeekで鑑定文を生成しました", {
+    mediaId: reading.mediaId,
+    cards: reading.cards
+  });
+  return reading;
+}
+
+async function generateAndSaveReading(media, taskId = null) {
+  const mediaId = media?.mediaId ?? media?.id;
+  if (!mediaId) throw new Error("mediaId is required for reading generation");
+
+  const theme = extractTheme(media?.caption ?? "");
+  if (!theme) throw new Error("キャプションからテーマを抽出できませんでした");
+
+  const cards = pickTarotCards(3);
+  const rawText = await generateReadingWithAi(theme, cards);
+  const readings = splitReadingText(rawText);
+  const reading = await saveMediaTarotReading({
+    mediaId,
+    theme,
+    captionHash: hashText(theme),
+    cards: {
+      "1": cards[0],
+      "2": cards[1],
+      "3": cards[2]
+    },
+    readings,
+    rawText
+  });
+
+  await addTaskStep(taskId, "reading_generated", "success", "鑑定文を生成して保存しました", {
+    mediaId,
+    theme,
+    cards
+  });
+  return reading ?? {
+    mediaId,
+    theme,
+    captionHash: hashText(theme),
+    cards: { "1": cards[0], "2": cards[1], "3": cards[2] },
+    readings,
+    rawText
+  };
+}
+
+async function generateReadingWithAi(theme, cards) {
+  return deepseekText([
+    {
+      role: "system",
+      content:
+        "あなたは「紫炎（しえん）｜御魂導師」専属のタロット鑑定ライターです。Instagramリール専用の、静かでエモーショナルな三択タロット鑑定文を作成してください。JSON、コードブロック、箇条書き、CTAは禁止。プレーンテキストのみで出力してください。"
+    },
+    {
+      role: "user",
+      content: `【入力（テーマ）】
+theme: "${theme}"
+
+【カード】
+① ${cards[0]}
+② ${cards[1]}
+③ ${cards[2]}
+
+【出力形式】
+以下の3つを順番通りにそのまま出力してください。
+
+🔮①を選んだあなたへ
+－${cards[0]}－
+本文（8〜12行・改行あり）
+
+🔮②を選んだあなたへ
+－${cards[1]}－
+本文（8〜12行・改行あり）
+
+🔮③を選んだあなたへ
+－${cards[2]}－
+本文（8〜12行・改行あり）
+
+【紫炎トーン】
+霊視、神託口調。視えました／感じました／流れが来ています。
+静か、夜、余白、気配、鼓動、光、風など情景描写中心。
+説明しない。理由・解説・分析は禁止。
+感情を直接言語化しすぎず、匂わせる。
+詩的で、映画のワンシーンのように描く。
+読後に余韻が残る文章。
+
+【禁止事項】
+CTA、占い解説、アドバイス口調、箇条書き、説明文、JSON、構造化出力。
+
+各本文は約250〜350文字。①②③と🔮は必ず入れてください。`
+    }
+  ], { maxTokens: 1800 });
+}
+
+async function deepseekJson(messages, options = {}) {
+  const text = await deepseekText(messages, {
+    ...options,
+    responseFormat: { type: "json_object" }
+  });
+  return JSON.parse(text);
+}
+
+async function deepseekText(messages, options = {}) {
+  if (!DEEPSEEK_API_KEY) throw new Error("DEEPSEEK_API_KEY is not set");
+
+  const response = await fetch(`${DEEPSEEK_BASE_URL.replace(/\/$/, "")}/chat/completions`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${DEEPSEEK_API_KEY}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      model: DEEPSEEK_MODEL,
+      messages,
+      max_tokens: options.maxTokens ?? 600,
+      temperature: options.temperature ?? 0.2,
+      response_format: options.responseFormat,
+      thinking: { type: "disabled" }
+    })
+  });
+
+  const json = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const message = json?.error?.message ?? `DeepSeek API error: ${response.status}`;
+    throw new Error(message);
+  }
+
+  const content = json?.choices?.[0]?.message?.content;
+  if (!content) throw new Error("DeepSeek returned empty content");
+  return content.trim();
 }
 
 async function getFlowForMedia(mediaId) {
@@ -778,6 +1237,71 @@ function cleanToken(value) {
     .replace(/\s+/g, "");
 }
 
+function sanitizeText(value) {
+  return String(value ?? "")
+    .replace(/<!--[\s\S]*?-->/g, " ")
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&rarr;/g, "→")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/^\s*\d+\.\s*[^:]{0,80}:\s*/i, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function extractTheme(caption) {
+  return sanitizeText(caption)
+    .replace(/\[auto:[^\]]+\]/gi, " ")
+    .replace(/#[^\s#]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function hashText(value) {
+  return createHash("sha256").update(String(value ?? "")).digest("hex");
+}
+
+function normalizeTemplates(value) {
+  const items = Array.isArray(value) ? value : String(value ?? "").split("\n");
+  return items.map((item) => String(item).trim()).filter(Boolean);
+}
+
+function pickPublicReply(templates = [], choice = "") {
+  const normalized = normalizeTemplates(templates);
+  const fallback = "{choice}を選びましたね。鑑定結果をDMに送りました。";
+  const template = normalized[Math.floor(Math.random() * normalized.length)] ?? fallback;
+  return template.replaceAll("{choice}", choice);
+}
+
+function splitReadingText(rawText) {
+  const text = String(rawText ?? "").trim();
+  const markers = [
+    { choice: "1", regex: /🔮\s*①を選んだあなたへ/ },
+    { choice: "2", regex: /🔮\s*②を選んだあなたへ/ },
+    { choice: "3", regex: /🔮\s*③を選んだあなたへ/ }
+  ].map((marker) => {
+    const match = marker.regex.exec(text);
+    return match ? { ...marker, index: match.index } : null;
+  });
+
+  if (markers.some((marker) => !marker)) {
+    throw new Error("鑑定文の分割に失敗しました。🔮①/🔮②/🔮③ が必要です。");
+  }
+
+  const sorted = markers.sort((a, b) => a.index - b.index);
+  const readings = {};
+  for (let index = 0; index < sorted.length; index += 1) {
+    const current = sorted[index];
+    const next = sorted[index + 1];
+    readings[current.choice] = text.slice(current.index, next?.index ?? text.length).trim();
+  }
+
+  return readings;
+}
+
 function normalizeComment(comment) {
   const text = comment?.text ?? "";
   return {
@@ -786,7 +1310,7 @@ function normalizeComment(comment) {
     username: comment?.from?.username ?? comment?.username ?? "",
     userId: comment?.from?.id ?? "",
     text,
-    choice: parseChoice(text),
+    choice: parseChoice(sanitizeText(text)),
     likeCount: comment?.like_count ?? null,
     hidden: comment?.hidden ?? null,
     createdAt: comment?.timestamp ?? null

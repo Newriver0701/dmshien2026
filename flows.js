@@ -64,13 +64,34 @@ export function normalizePublicReplies(reply = {}) {
 
 export function parseChoice(text = "") {
   const normalized = text
+    .replace(/<[^>]*>/g, " ")
+    .replace(/<!--[\s\S]*?-->/g, " ")
+    .replace(/&rarr;|→/g, " ")
+    .replace(/&lt;|&gt;|&amp;|&quot;|&#39;/g, " ")
+    .replace(/^\s*\d+\.\s*comment\s*:\s*/i, "")
     .replace(/[１２３]/g, (char) => String("１２３".indexOf(char) + 1))
     .replace(/[①➀❶]/g, "1")
     .replace(/[②➁❷]/g, "2")
     .replace(/[③➂❸]/g, "3")
+    .replace(/[Ⅰⅰ]/g, "1")
+    .replace(/[Ⅱⅱ]/g, "2")
+    .replace(/[Ⅲⅲ]/g, "3")
     .trim()
     .toLowerCase();
 
-  const match = normalized.match(/^(?:カード\s*)?([123])\s*(?:番|ばん)?$/);
-  return match ? match[1] : null;
+  if (!normalized) return null;
+  if (/(じゃない|ではない|ちゃう|違う|以外|not\s*[123])/.test(normalized)) return null;
+
+  const candidates = [];
+  const patterns = {
+    "1": [/\bno\.?\s*1\b/, /(?:^|[^\d])1\s*(?:番|ばん|です|で|お願いします|おねがい|希望)?(?:$|[^\d])/, /(?:^|\s)(一|いち)(?:$|\s|番|で|です|お願いします)/],
+    "2": [/\bno\.?\s*2\b/, /(?:^|[^\d])2\s*(?:番|ばん|です|で|お願いします|おねがい|希望)?(?:$|[^\d])/, /(?:^|\s)(二|に)(?:$|\s|番|で|です|お願いします)/],
+    "3": [/\bno\.?\s*3\b/, /(?:^|[^\d])3\s*(?:番|ばん|です|で|お願いします|おねがい|希望)?(?:$|[^\d])/, /(?:^|\s)(三|さん)(?:$|\s|番|で|です|お願いします)/]
+  };
+
+  for (const [choice, regexes] of Object.entries(patterns)) {
+    if (regexes.some((regex) => regex.test(normalized))) candidates.push(choice);
+  }
+
+  return new Set(candidates).size === 1 ? candidates[0] : null;
 }
