@@ -626,6 +626,11 @@
             <div class="stack" id="public-template-list"></div>
           </div>
           <div class="field">
+            <label for="private-template">DM本文フォーマット</label>
+            <textarea id="private-template"></textarea>
+            <p class="hint">{theme}=投稿テーマ / {reading}=鑑定文 / {displayName}=ユーザー名、未取得ならあなた / {honorific}=ユーザー名取得時だけさん / {username}=ユーザー名 / {choice}=番号 / {card}=カード名</p>
+          </div>
+          <div class="field">
             <label for="target-mode">対象投稿</label>
             <select id="target-mode">
               <option value="all_posts">全投稿</option>
@@ -810,6 +815,7 @@
         document.getElementById("toggle-ai-reading").textContent = settings.aiReadingEnabled ? "鑑定AIをOFF" : "鑑定AIをON";
         document.getElementById("m-target").textContent = targetModeLabel(settings.targetMode);
         document.getElementById("target-mode").value = settings.targetMode || "all_posts";
+        document.getElementById("private-template").value = settings.privateReplyTemplate || "{reading}";
         document.getElementById("public-min").value = settings.publicReplyMinDelaySec ?? 120;
         document.getElementById("public-max").value = settings.publicReplyMaxDelaySec ?? 600;
         document.getElementById("dm-min").value = settings.dmAfterPublicMinDelaySec ?? 180;
@@ -844,6 +850,7 @@
         const data = await put("/api/settings", {
           settings: {
             publicReplyTemplates,
+            privateReplyTemplate: document.getElementById("private-template").value,
             targetMode,
             publicReplyMinDelaySec: document.getElementById("public-min").value,
             publicReplyMaxDelaySec: document.getElementById("public-max").value,

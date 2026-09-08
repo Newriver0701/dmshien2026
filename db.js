@@ -18,6 +18,20 @@ export const DEFAULT_SETTINGS = {
   pauseOnRateLimit: true,
   rateLimitPauseMinutes: 30,
   sendPausedUntil: null,
+  privateReplyTemplate: `{theme}
+
+{reading}
+
+もっと詳しく、あなた専用の恋の流れを視てほしい方は
+プロフィールのLINEからご相談ください。
+
+今の気持ち、相手の本音、これから起きる変化。
+すべて丁寧に霊視します。
+初回鑑定は無料です🔮
+
+{displayName}{honorific}にはぜひ鑑定を受けてほしいと思っています😊
+
+hi.switchy.io/shien_uranai`,
   publicReplyTemplates: [
     "{choice}を選びましたね。鑑定結果をDMに送りました。",
     "{choice}ですね。カードからのメッセージをDMに送っています。",
@@ -833,13 +847,13 @@ export async function getWebhookTodaySummary(limit = 20) {
 }
 
 export async function getSettings() {
-  if (!pool) return { ...DEFAULT_SETTINGS };
+  if (!pool) return normalizeSettings({ ...DEFAULT_SETTINGS });
 
   const result = await pool.query("select value from app_settings where key = 'main'");
-  return {
+  return normalizeSettings({
     ...DEFAULT_SETTINGS,
     ...(result.rows[0]?.value ?? {})
-  };
+  });
 }
 
 export async function updateSettings(settings) {
@@ -862,10 +876,25 @@ export async function updateSettings(settings) {
     [JSON.stringify(merged)]
   );
 
-  return {
+  return normalizeSettings({
     ...DEFAULT_SETTINGS,
     ...(result.rows[0]?.value ?? {})
-  };
+  });
+}
+
+function normalizeSettings(settings) {
+  const normalized = { ...settings };
+  if (
+    typeof normalized.privateReplyTemplate === "string" &&
+    normalized.privateReplyTemplate.includes("{displayName}には") &&
+    !normalized.privateReplyTemplate.includes("{honorific}")
+  ) {
+    normalized.privateReplyTemplate = normalized.privateReplyTemplate.replaceAll(
+      "{displayName}には",
+      "{displayName}{honorific}には"
+    );
+  }
+  return normalized;
 }
 
 export async function createAutomationTask(task) {

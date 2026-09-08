@@ -205,6 +205,12 @@ app.put("/api/settings", requireAdmin, async (req, res) => {
         return res.status(400).json({ ok: false, error: "公開返信テンプレートを1つ以上入れてください" });
       }
     }
+    if (Object.hasOwn(incoming, "privateReplyTemplate")) {
+      settings.privateReplyTemplate = String(incoming.privateReplyTemplate ?? "").trim();
+      if (!settings.privateReplyTemplate.includes("{reading}")) {
+        return res.status(400).json({ ok: false, error: "DM本文フォーマットには {reading} を入れてください" });
+      }
+    }
     const numericSettings = {
       publicReplyMinDelaySec: [0, 3600],
       publicReplyMaxDelaySec: [0, 3600],
@@ -697,7 +703,15 @@ app.post("/api/dry-run-comment", requireAdmin, async (req, res) => {
     const targetAllowed = isTargetAllowed(flow, settings);
     const reading = choice && targetAllowed ? await getMediaTarotReading(mediaId) : null;
     const publicReply = choice ? pickPublicReply(settings.publicReplyTemplates, choice) : null;
-    const privateReply = choice ? reading?.readings?.[choice] ?? null : null;
+    const privateReply = choice && reading?.readings?.[choice]
+      ? formatPrivateReply(settings.privateReplyTemplate, {
+          theme: reading.theme,
+          reading: reading.readings[choice],
+          username: "",
+          choice,
+          card: reading.cards?.[choice]
+        })
+      : null;
 
     res.json({
       ok: true,
@@ -1125,8 +1139,15 @@ async function prepareAutomationTask(task, options = {}) {
 
   const media = (await getMediaPost(task.mediaId)) ?? (await getMedia(task.mediaId));
   const reading = await getOrCreateMediaReading(media, taskId, settings);
-  const privateReply = reading?.readings?.[task.choice];
-  if (!privateReply) throw new Error(`${task.choice}番の鑑定文がありません`);
+  const readingText = reading?.readings?.[task.choice];
+  if (!readingText) throw new Error(`${task.choice}番の鑑定文がありません`);
+  const privateReply = formatPrivateReply(settings.privateReplyTemplate, {
+    theme: reading.theme,
+    reading: readingText,
+    username: task.username,
+    choice: task.choice,
+    card: reading.cards?.[task.choice]
+  });
 
   const publicReply = task.publicReply || pickPublicReply(settings.publicReplyTemplates, task.choice);
   const preparedTask = await updateAutomationTask(taskId, {
@@ -1637,6 +1658,25 @@ function pickPublicReply(templates = [], choice = "") {
   const fallback = "{choice}を選びましたね。鑑定結果をDMに送りました。";
   const template = normalized[Math.floor(Math.random() * normalized.length)] ?? fallback;
   return template.replaceAll("{choice}", choice);
+}
+
+function formatPrivateReply(template, values = {}) {
+  const username = String(values.username ?? "").replace(/^@/, "").trim();
+  const displayName = username || "あなた";
+  const replacements = {
+    theme: values.theme ?? "",
+    reading: values.reading ?? "",
+    username: username || "あなた",
+    displayName,
+    honorific: username ? "さん" : "",
+    choice: values.choice ?? "",
+    card: values.card ?? ""
+  };
+  const source = String(template || "{reading}");
+  return Object.entries(replacements).reduce(
+    (text, [key, value]) => text.replaceAll(`{${key}}`, String(value)),
+    source
+  ).trim();
 }
 
 function randomInt(minValue, maxValue) {
