@@ -7,7 +7,9 @@ import { fileURLToPath } from "node:url";
 import {
   findDbFlowByMarker,
   addTaskStep,
+  claimDueSendTasks,
   createAutomationTask,
+  getOutboundSendCount,
   getAutomationTask,
   getAutomationTaskSteps,
   getAutomationTasks,
@@ -25,11 +27,16 @@ import {
   getWebhookTodaySummary,
   getDatabaseStatus,
   hasDatabase,
-  hasProcessedComment,
+  hasQueuedOrProcessedComment,
   initDatabase,
+  markPrivateReplySent,
+  markPublicReplySent,
+  markSendTaskError,
+  rescheduleSendTask,
   saveEvent,
   saveMediaTarotReading,
   saveProcessedComment,
+  scheduleAutomationTask,
   setFlowEnabled,
   updateAutomationTask,
   updateFlowChoices,
@@ -66,6 +73,8 @@ const {
 const processedComments = new Set();
 const recentEvents = [];
 const mediaFlowCache = new Map();
+const workerId = `worker-${process.pid}-${Math.random().toString(36).slice(2)}`;
+let sendQueueBusy = false;
 const COMMENT_FIELDS = "id,text,username,timestamp,like_count,hidden,from";
 const COMMENT_FIELDS_DETAILED = "id,text,username,timestamp,like_count,hidden,from{id,username}";
 
@@ -195,6 +204,45 @@ app.put("/api/settings", requireAdmin, async (req, res) => {
       if (settings.publicReplyTemplates.length === 0) {
         return res.status(400).json({ ok: false, error: "公開返信テンプレートを1つ以上入れてください" });
       }
+    }
+    const numericSettings = {
+      publicReplyMinDelaySec: [0, 3600],
+      publicReplyMaxDelaySec: [0, 3600],
+      dmAfterPublicMinDelaySec: [0, 3600],
+      dmAfterPublicMaxDelaySec: [0, 3600],
+      maxSendsPerHour: [1, 5000],
+      maxSendsPerDay: [1, 50000],
+      maxParallelSends: [1, 50],
+      rateLimitPauseMinutes: [1, 1440]
+    };
+    for (const [key, [min, max]] of Object.entries(numericSettings)) {
+      if (Object.hasOwn(incoming, key)) {
+        settings[key] = clampNumber(incoming[key], min, max);
+      }
+    }
+    if (Object.hasOwn(incoming, "pauseOnRateLimit")) {
+      settings.pauseOnRateLimit = Boolean(incoming.pauseOnRateLimit);
+    }
+    if (Object.hasOwn(incoming, "sendPausedUntil")) {
+      settings.sendPausedUntil = incoming.sendPausedUntil || null;
+    }
+    if (
+      Object.hasOwn(settings, "publicReplyMinDelaySec") ||
+      Object.hasOwn(settings, "publicReplyMaxDelaySec")
+    ) {
+      const current = await getSettings();
+      const min = settings.publicReplyMinDelaySec ?? current.publicReplyMinDelaySec;
+      const max = settings.publicReplyMaxDelaySec ?? current.publicReplyMaxDelaySec;
+      if (min > max) return res.status(400).json({ ok: false, error: "公開返信の最小秒数は最大秒数以下にしてください" });
+    }
+    if (
+      Object.hasOwn(settings, "dmAfterPublicMinDelaySec") ||
+      Object.hasOwn(settings, "dmAfterPublicMaxDelaySec")
+    ) {
+      const current = await getSettings();
+      const min = settings.dmAfterPublicMinDelaySec ?? current.dmAfterPublicMinDelaySec;
+      const max = settings.dmAfterPublicMaxDelaySec ?? current.dmAfterPublicMaxDelaySec;
+      if (min > max) return res.status(400).json({ ok: false, error: "DM送信の最小秒数は最大秒数以下にしてください" });
     }
 
     res.json({ ok: true, settings: await updateSettings(settings) });
@@ -546,9 +594,14 @@ app.post("/api/media/:mediaId/sync-comments", requireAdmin, async (req, res) => 
           continue;
         }
 
-        if (processedComments.has(normalized.commentId) || (await hasProcessedComment(normalized.commentId))) {
-          await updateCommentStatus(normalized.commentId, "already_processed");
-          await updateAutomationTask(task?.taskId, { status: "already_processed", errorMessage: "すでに返信済みです" });
+        if (processedComments.has(normalized.commentId) || (await hasQueuedOrProcessedComment(normalized.commentId))) {
+          if (isTerminalOrQueuedStatus(task?.status)) {
+            await updateCommentStatus(normalized.commentId, task.status === "sent" ? "dm_sent" : task.status);
+            await addTaskStep(task?.taskId, "duplicate_check", "skipped", "送信待機中または送信済みのため再処理しません");
+          } else {
+            await updateCommentStatus(normalized.commentId, "already_processed");
+            await updateAutomationTask(task?.taskId, { status: "already_processed", errorMessage: "すでに返信済みです" });
+          }
           skipped += 1;
           continue;
         }
@@ -794,10 +847,15 @@ async function handleComment(comment) {
     return;
   }
 
-  if (processedComments.has(commentId) || (await hasProcessedComment(commentId))) {
-    await updateCommentStatus(commentId, "already_processed");
-    await updateAutomationTask(task?.taskId, { status: "already_processed", errorMessage: "すでに返信済みです" });
-    await addTaskStep(task?.taskId, "duplicate_check", "skipped", "すでに返信済みです");
+  if (processedComments.has(commentId) || (await hasQueuedOrProcessedComment(commentId))) {
+    if (isTerminalOrQueuedStatus(task?.status)) {
+      await updateCommentStatus(commentId, task.status === "sent" ? "dm_sent" : task.status);
+      await addTaskStep(task?.taskId, "duplicate_check", "skipped", "送信待機中または送信済みのため再処理しません");
+    } else {
+      await updateCommentStatus(commentId, "already_processed");
+      await updateAutomationTask(task?.taskId, { status: "already_processed", errorMessage: "すでに返信済みです" });
+      await addTaskStep(task?.taskId, "duplicate_check", "skipped", "すでに返信済みです");
+    }
     addEvent({ status: "ignored", reason: "already_processed", commentId, mediaId, choice });
     return;
   }
@@ -844,11 +902,10 @@ async function handleComment(comment) {
       return prepared.task;
     }
 
-    const result = await runAutomationTask(
-      prepared.task,
-      { forceSend: true, settings, flow, prepared }
-    );
-    console.log(`sent reply: media=${mediaId} comment=${commentId} choice=${choice}`);
+    const result = hasDatabase()
+      ? await schedulePreparedTask(prepared)
+      : await runAutomationTask(prepared.task, { forceSend: true, settings, flow, prepared });
+    console.log(`queued reply: media=${mediaId} comment=${commentId} choice=${choice}`);
     return result;
   } catch (error) {
     addEvent({
@@ -876,14 +933,18 @@ async function runAutomationTask(task, options = {}) {
     return getAutomationTask(taskId);
   }
 
-  await replyToComment(preparedTask.commentId, publicReply);
+  const publicResult = await replyToComment(preparedTask.commentId, publicReply);
+  await markPublicReplySent(taskId, publicResult.headers);
   await addTaskStep(taskId, "public_reply", "success", "公開コメント返信を送信しました", {
-    publicReply
+    publicReply,
+    apiUsage: publicResult.headers
   });
 
-  await sendPrivateReply(preparedTask.commentId, privateReply);
+  const privateResult = await sendPrivateReply(preparedTask.commentId, privateReply);
+  await markPrivateReplySent(taskId, privateResult.headers);
   await addTaskStep(taskId, "private_reply", "success", "Private Reply DMを送信しました", {
-    privateReply
+    privateReply,
+    apiUsage: privateResult.headers
   });
 
   processedComments.add(preparedTask.commentId);
@@ -907,6 +968,137 @@ async function runAutomationTask(task, options = {}) {
   addEvent({ status: "sent", commentId: preparedTask.commentId, mediaId: preparedTask.mediaId, choice: preparedTask.choice, marker: flow?.marker ?? null });
 
   return getAutomationTask(taskId);
+}
+
+async function schedulePreparedTask(prepared) {
+  const { settings, task, flow } = prepared;
+  const publicDelaySec = randomInt(
+    settings.publicReplyMinDelaySec,
+    settings.publicReplyMaxDelaySec
+  );
+  const dmDelaySec = randomInt(
+    settings.dmAfterPublicMinDelaySec,
+    settings.dmAfterPublicMaxDelaySec
+  );
+  const publicAt = new Date(Date.now() + publicDelaySec * 1000);
+  const dmAt = new Date(publicAt.getTime() + dmDelaySec * 1000);
+  const scheduled = await scheduleAutomationTask(task.taskId, publicAt.toISOString(), dmAt.toISOString());
+
+  await updateCommentStatus(task.commentId, "scheduled_to_send");
+  await addTaskStep(task.taskId, "send_waiting", "success", "時間を空けて送信するため待機に入りました", {
+    publicReplyDelaySec: publicDelaySec,
+    dmAfterPublicDelaySec: dmDelaySec,
+    publicReplyScheduledAt: publicAt.toISOString(),
+    dmScheduledAt: dmAt.toISOString()
+  });
+  addEvent({
+    status: "scheduled",
+    reason: "send_queue",
+    commentId: task.commentId,
+    mediaId: task.mediaId,
+    choice: task.choice,
+    marker: flow?.marker ?? null,
+    message: `公開返信は${publicDelaySec}秒後、DMはその${dmDelaySec}秒後に送信待機へ入りました`
+  });
+
+  return scheduled ?? getAutomationTask(task.taskId);
+}
+
+async function processSendQueue() {
+  if (sendQueueBusy || !hasDatabase()) return;
+
+  sendQueueBusy = true;
+  try {
+    const settings = await getSettings();
+    if (!settings.automationEnabled) return;
+    if (settings.sendPausedUntil && new Date(settings.sendPausedUntil).getTime() > Date.now()) return;
+
+    const hourly = await getOutboundSendCount(60);
+    const daily = await getOutboundSendCount(1440);
+    const remainingHour = Number(settings.maxSendsPerHour ?? 150) - hourly;
+    const remainingDay = Number(settings.maxSendsPerDay ?? 1000) - daily;
+    const available = Math.min(remainingHour, remainingDay, Number(settings.maxParallelSends ?? 8));
+    if (available <= 0) {
+      return;
+    }
+
+    const tasks = await claimDueSendTasks(workerId, available);
+    if (tasks.length === 0) return;
+
+    await Promise.all(tasks.map((task) => processQueuedSendTask(task, settings)));
+  } catch (error) {
+    console.error("send queue worker error:", error);
+  } finally {
+    sendQueueBusy = false;
+  }
+}
+
+async function processQueuedSendTask(task, settings) {
+  try {
+    if (task.status === "sending_public") {
+      const result = await replyToComment(task.commentId, task.publicReply);
+      await markPublicReplySent(task.taskId, result.headers);
+      await updateCommentStatus(task.commentId, "public_reply_sent");
+      await addTaskStep(task.taskId, "public_reply", "success", "待機時間が過ぎたため公開コメント返信を送信しました", {
+        publicReply: task.publicReply,
+        apiUsage: result.headers
+      });
+      addEvent({ status: "public_reply_sent", reason: "send_queue", commentId: task.commentId, mediaId: task.mediaId, choice: task.choice });
+      return;
+    }
+
+    if (task.status === "sending_dm") {
+      const result = await sendPrivateReply(task.commentId, task.privateReply);
+      await markPrivateReplySent(task.taskId, result.headers);
+      processedComments.add(task.commentId);
+      await saveProcessedComment({
+        commentId: task.commentId,
+        mediaId: task.mediaId,
+        choice: task.choice,
+        username: task.username,
+        text: task.text,
+        publicReply: task.publicReply,
+        privateReply: task.privateReply,
+        status: "sent"
+      });
+      await updateCommentStatus(task.commentId, "dm_sent");
+      await addTaskStep(task.taskId, "private_reply", "success", "待機時間が過ぎたためPrivate Reply DMを送信しました", {
+        privateReply: task.privateReply,
+        apiUsage: result.headers
+      });
+      addEvent({ status: "sent", reason: "send_queue", commentId: task.commentId, mediaId: task.mediaId, choice: task.choice });
+    }
+  } catch (error) {
+    await handleQueuedSendError(task, error, settings);
+  }
+}
+
+async function handleQueuedSendError(task, error, settings) {
+  const message = errorMessage(error);
+  const apiHeaders = error?.metaHeaders ?? null;
+  const rateLimited = settings.pauseOnRateLimit && isRateLimitError(error);
+  const phase = task.status === "sending_dm" ? "dm" : "public";
+  const resumableStatus = phase === "dm" ? "public_reply_sent" : "scheduled_to_send";
+
+  if (rateLimited) {
+    const pauseMinutes = Number(settings.rateLimitPauseMinutes ?? 30);
+    const resumeAt = new Date(Date.now() + pauseMinutes * 60 * 1000);
+    await updateSettings({ sendPausedUntil: resumeAt.toISOString() });
+    await rescheduleSendTask(task.taskId, resumableStatus, resumeAt.toISOString(), message, apiHeaders);
+    await updateCommentStatus(task.commentId, "rate_limited", message);
+    await addTaskStep(task.taskId, phase === "dm" ? "private_reply" : "public_reply", "error", `Metaの制限らしき応答のため${pauseMinutes}分後に延期しました: ${message}`, {
+      apiUsage: apiHeaders
+    });
+    addEvent({ status: "error", reason: "rate_limited", commentId: task.commentId, mediaId: task.mediaId, choice: task.choice, message });
+    return;
+  }
+
+  await markSendTaskError(task.taskId, message, apiHeaders);
+  await updateCommentStatus(task.commentId, "send_error", message);
+  await addTaskStep(task.taskId, phase === "dm" ? "private_reply" : "public_reply", "error", message, {
+    apiUsage: apiHeaders
+  });
+  addEvent({ status: "error", reason: "send_failed", commentId: task.commentId, mediaId: task.mediaId, choice: task.choice, message });
 }
 
 async function prepareAutomationTask(task, options = {}) {
@@ -1234,16 +1426,54 @@ async function graphRequest(path, options = {}) {
   });
 }
 
+async function graphRequestWithMeta(path, options = {}) {
+  const url = new URL(`${GRAPH_BASE_URL}/${GRAPH_API_VERSION}/${path.replace(/^\//, "")}`);
+  url.searchParams.set("access_token", ACCESS_TOKEN);
+
+  if (options.fields) {
+    url.searchParams.set("fields", options.fields);
+  }
+
+  for (const [key, value] of Object.entries(options.query ?? {})) {
+    url.searchParams.set(key, value);
+  }
+
+  return fetchJsonWithMeta(url, {
+    method: options.method ?? "GET",
+    headers: options.body ? { "Content-Type": "application/json" } : undefined,
+    body: options.body ? JSON.stringify(options.body) : undefined
+  });
+}
+
 async function fetchJson(url, options = {}) {
   const response = await fetch(url, options);
   const json = await response.json().catch(() => ({}));
   if (!response.ok) {
     const message = json?.error?.message ?? `Meta API error: ${response.status}`;
     const detail = Object.keys(json).length ? `${message} ${JSON.stringify(json)}` : message;
-    throw new Error(detail);
+    const error = new Error(detail);
+    error.metaJson = json;
+    error.metaHeaders = pickMetaHeaders(response.headers);
+    throw error;
   }
 
   return json;
+}
+
+async function fetchJsonWithMeta(url, options = {}) {
+  const response = await fetch(url, options);
+  const json = await response.json().catch(() => ({}));
+  const headers = pickMetaHeaders(response.headers);
+  if (!response.ok) {
+    const message = json?.error?.message ?? `Meta API error: ${response.status}`;
+    const detail = Object.keys(json).length ? `${message} ${JSON.stringify(json)}` : message;
+    const error = new Error(detail);
+    error.metaJson = json;
+    error.metaHeaders = headers;
+    throw error;
+  }
+
+  return { json, headers };
 }
 
 async function getMediaCaption(mediaId) {
@@ -1310,14 +1540,14 @@ async function getCommentFromInstagram(commentId) {
 }
 
 async function replyToComment(commentId, message) {
-  await graphRequest(`/${commentId}/replies`, {
+  return graphRequestWithMeta(`/${commentId}/replies`, {
     method: "POST",
     body: { message }
   });
 }
 
 async function sendPrivateReply(commentId, message) {
-  await graphRequest(`/${IG_USER_ID}/messages`, {
+  return graphRequestWithMeta(`/${IG_USER_ID}/messages`, {
     method: "POST",
     body: {
       recipient: { comment_id: commentId },
@@ -1407,6 +1637,55 @@ function pickPublicReply(templates = [], choice = "") {
   const fallback = "{choice}を選びましたね。鑑定結果をDMに送りました。";
   const template = normalized[Math.floor(Math.random() * normalized.length)] ?? fallback;
   return template.replaceAll("{choice}", choice);
+}
+
+function randomInt(minValue, maxValue) {
+  const min = Math.max(0, Number(minValue ?? 0));
+  const max = Math.max(min, Number(maxValue ?? min));
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+function clampNumber(value, min, max) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return min;
+  return Math.min(max, Math.max(min, Math.round(number)));
+}
+
+function pickMetaHeaders(headers) {
+  const picked = {};
+  for (const key of [
+    "x-app-usage",
+    "x-business-use-case-usage",
+    "x-page-usage",
+    "x-fb-trace-id"
+  ]) {
+    const value = headers.get(key);
+    if (value) picked[key] = value;
+  }
+  return picked;
+}
+
+function isRateLimitError(error) {
+  const code = Number(error?.metaJson?.error?.code);
+  const subcode = Number(error?.metaJson?.error?.error_subcode);
+  const message = errorMessage(error).toLowerCase();
+  return (
+    [4, 17, 32, 613, 80002, 80006].includes(code) ||
+    [2207004, 2207006].includes(subcode) ||
+    message.includes("rate limit") ||
+    message.includes("too many calls") ||
+    message.includes("temporarily blocked")
+  );
+}
+
+function isTerminalOrQueuedStatus(status) {
+  return [
+    "scheduled_to_send",
+    "public_reply_sent",
+    "sending_public",
+    "sending_dm",
+    "sent"
+  ].includes(status);
 }
 
 function isTargetAllowed(flow, settings = {}) {
@@ -1529,6 +1808,7 @@ initDatabase(flows)
     app.listen(Number(PORT), () => {
       console.log(`listening on port ${PORT}`);
       console.log(hasDatabase() ? "Postgres connected" : "Postgres disabled; using memory only");
+      startSendQueueWorker();
     });
   })
   .catch((error) => {
@@ -1538,3 +1818,9 @@ initDatabase(flows)
       console.log("Postgres disabled; using memory only");
     });
   });
+
+function startSendQueueWorker() {
+  if (!hasDatabase()) return;
+  setTimeout(() => processSendQueue(), 5000);
+  setInterval(() => processSendQueue(), 15000);
+}

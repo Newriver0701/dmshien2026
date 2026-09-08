@@ -8,6 +8,16 @@ export const DEFAULT_SETTINGS = {
   targetMode: "all_posts",
   aiChoiceEnabled: true,
   aiReadingEnabled: true,
+  publicReplyMinDelaySec: 120,
+  publicReplyMaxDelaySec: 600,
+  dmAfterPublicMinDelaySec: 180,
+  dmAfterPublicMaxDelaySec: 600,
+  maxSendsPerHour: 150,
+  maxSendsPerDay: 1000,
+  maxParallelSends: 8,
+  pauseOnRateLimit: true,
+  rateLimitPauseMinutes: 30,
+  sendPausedUntil: null,
   publicReplyTemplates: [
     "{choice}を選びましたね。鑑定結果をDMに送りました。",
     "{choice}ですね。カードからのメッセージをDMに送っています。",
@@ -152,6 +162,15 @@ export async function initDatabase(flows = []) {
         public_reply text,
         private_reply text,
         error_message text,
+        public_reply_scheduled_at timestamptz,
+        public_reply_sent_at timestamptz,
+        dm_scheduled_at timestamptz,
+        dm_sent_at timestamptz,
+        attempt_count integer not null default 0,
+        locked_until timestamptz,
+        locked_by text,
+        last_api_headers jsonb,
+        last_api_error text,
         created_at timestamptz not null default now(),
         updated_at timestamptz not null default now()
       );
@@ -211,6 +230,16 @@ export async function initDatabase(flows = []) {
       alter table events add column if not exists comment_text text;
       alter table events add column if not exists marker text;
       alter table events add column if not exists message text;
+
+      alter table automation_tasks add column if not exists public_reply_scheduled_at timestamptz;
+      alter table automation_tasks add column if not exists public_reply_sent_at timestamptz;
+      alter table automation_tasks add column if not exists dm_scheduled_at timestamptz;
+      alter table automation_tasks add column if not exists dm_sent_at timestamptz;
+      alter table automation_tasks add column if not exists attempt_count integer not null default 0;
+      alter table automation_tasks add column if not exists locked_until timestamptz;
+      alter table automation_tasks add column if not exists locked_by text;
+      alter table automation_tasks add column if not exists last_api_headers jsonb;
+      alter table automation_tasks add column if not exists last_api_error text;
     `);
 
     await seedSettings();
@@ -453,6 +482,7 @@ export async function getMediaPosts() {
       coalesce(c.saved_comments, 0)::int as "savedCommentCount",
       coalesce(t.task_count, 0)::int as "taskCount",
       coalesce(t.ready_count, 0)::int as "readyTaskCount",
+      coalesce(t.queued_count, 0)::int as "queuedTaskCount",
       coalesce(t.sent_count, 0)::int as "sentTaskCount",
       r.media_id is not null as "hasReading",
       coalesce((r.readings ? '1') and (r.readings ? '2') and (r.readings ? '3'), false) as "readingComplete",
@@ -471,6 +501,7 @@ export async function getMediaPosts() {
         media_id,
         count(*) as task_count,
         count(*) filter (where status = 'ready_to_send') as ready_count,
+        count(*) filter (where status in ('scheduled_to_send', 'public_reply_sent', 'sending_public', 'sending_dm')) as queued_count,
         count(*) filter (where status = 'sent') as sent_count
       from automation_tasks
       group by media_id
@@ -508,6 +539,7 @@ export async function getMediaPost(mediaId) {
         coalesce(c.saved_comments, 0)::int as "savedCommentCount",
         coalesce(t.task_count, 0)::int as "taskCount",
         coalesce(t.ready_count, 0)::int as "readyTaskCount",
+        coalesce(t.queued_count, 0)::int as "queuedTaskCount",
         coalesce(t.sent_count, 0)::int as "sentTaskCount",
         r.media_id is not null as "hasReading",
         coalesce((r.readings ? '1') and (r.readings ? '2') and (r.readings ? '3'), false) as "readingComplete",
@@ -526,6 +558,7 @@ export async function getMediaPost(mediaId) {
           media_id,
           count(*) as task_count,
           count(*) filter (where status = 'ready_to_send') as ready_count,
+          count(*) filter (where status in ('scheduled_to_send', 'public_reply_sent', 'sending_public', 'sending_dm')) as queued_count,
           count(*) filter (where status = 'sent') as sent_count
         from automation_tasks
         group by media_id
@@ -853,7 +886,11 @@ export async function createAutomationTask(task) {
         sanitized_text = excluded.sanitized_text,
         choice = coalesce(excluded.choice, automation_tasks.choice),
         choice_method = coalesce(excluded.choice_method, automation_tasks.choice_method),
-        status = excluded.status,
+        status = case
+          when automation_tasks.status in ('scheduled_to_send', 'public_reply_sent', 'sending_public', 'sending_dm', 'sent')
+            then automation_tasks.status
+          else excluded.status
+        end,
         updated_at = now()
       returning ${taskSelectFields()}
     `,
@@ -890,12 +927,21 @@ export async function updateAutomationTask(taskId, patch) {
     status: "status",
     publicReply: "public_reply",
     privateReply: "private_reply",
-    errorMessage: "error_message"
+    errorMessage: "error_message",
+    publicReplyScheduledAt: "public_reply_scheduled_at",
+    publicReplySentAt: "public_reply_sent_at",
+    dmScheduledAt: "dm_scheduled_at",
+    dmSentAt: "dm_sent_at",
+    attemptCount: "attempt_count",
+    lockedUntil: "locked_until",
+    lockedBy: "locked_by",
+    lastApiHeaders: "last_api_headers",
+    lastApiError: "last_api_error"
   };
 
   for (const [key, column] of Object.entries(map)) {
     if (Object.hasOwn(patch, key)) {
-      values.push(patch[key]);
+      values.push(key === "lastApiHeaders" && patch[key] ? JSON.stringify(patch[key]) : patch[key]);
       fields.push(`${column} = $${values.length}`);
     }
   }
@@ -1080,10 +1126,287 @@ export async function saveMediaTarotReading(reading) {
   return result.rows[0] ?? null;
 }
 
+export async function hasQueuedOrProcessedComment(commentId) {
+  if (!pool || !commentId) return false;
+
+  const result = await pool.query(
+    `
+      select 1
+      from processed_comments
+      where comment_id = $1
+      union all
+      select 1
+      from automation_tasks
+      where
+        comment_id = $1
+        and status in ('scheduled_to_send', 'public_reply_sent', 'sending_public', 'sending_dm', 'sent')
+      limit 1
+    `,
+    [commentId]
+  );
+
+  return result.rowCount > 0;
+}
+
+export async function scheduleAutomationTask(taskId, publicReplyScheduledAt, dmScheduledAt) {
+  if (!pool || !taskId) return null;
+
+  const result = await pool.query(
+    `
+      update automation_tasks
+      set
+        status = 'scheduled_to_send',
+        public_reply_scheduled_at = $2,
+        dm_scheduled_at = $3,
+        locked_until = null,
+        locked_by = null,
+        last_api_error = null,
+        updated_at = now()
+      where id = $1
+      returning ${taskSelectFields()}
+    `,
+    [taskId, publicReplyScheduledAt, dmScheduledAt]
+  );
+
+  return result.rows[0] ?? null;
+}
+
+export async function claimDueSendTask(workerId) {
+  if (!pool) return null;
+
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    const result = await client.query(
+      `
+        select ${taskSelectFields()}
+        from automation_tasks
+        where
+          (
+            (
+              status = 'scheduled_to_send'
+              and public_reply_scheduled_at <= now()
+            )
+            or (
+              status = 'public_reply_sent'
+              and dm_scheduled_at <= now()
+            )
+          )
+          and (locked_until is null or locked_until < now())
+        order by
+          case
+            when status = 'scheduled_to_send' then public_reply_scheduled_at
+            else dm_scheduled_at
+          end asc nulls last
+        limit 1
+        for update skip locked
+      `
+    );
+
+    const task = result.rows[0];
+    if (!task) {
+      await client.query("commit");
+      return null;
+    }
+
+    const nextStatus = task.status === "scheduled_to_send" ? "sending_public" : "sending_dm";
+    const updated = await client.query(
+      `
+        update automation_tasks
+        set status = $2, locked_until = now() + interval '90 seconds', locked_by = $3, updated_at = now()
+        where id = $1
+        returning ${taskSelectFields()}
+      `,
+      [task.taskId, nextStatus, workerId]
+    );
+
+    await client.query("commit");
+    return updated.rows[0] ?? null;
+  } catch (error) {
+    await client.query("rollback").catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+export async function claimDueSendTasks(workerId, limit = 8) {
+  if (!pool) return [];
+
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    const result = await client.query(
+      `
+        with selected as (
+          select id, status
+          from automation_tasks
+          where
+            (
+              (
+                status = 'scheduled_to_send'
+                and public_reply_scheduled_at <= now()
+              )
+              or (
+                status = 'public_reply_sent'
+                and dm_scheduled_at <= now()
+              )
+            )
+            and (locked_until is null or locked_until < now())
+          order by
+            case
+              when status = 'scheduled_to_send' then public_reply_scheduled_at
+              else dm_scheduled_at
+            end asc nulls last
+          limit $1
+          for update skip locked
+        )
+        update automation_tasks t
+        set
+          status = case
+            when selected.status = 'scheduled_to_send' then 'sending_public'
+            else 'sending_dm'
+          end,
+          locked_until = now() + interval '90 seconds',
+          locked_by = $2,
+          updated_at = now()
+        from selected
+        where t.id = selected.id
+        returning ${taskSelectFields("t")}
+      `,
+      [limit, workerId]
+    );
+
+    await client.query("commit");
+    return result.rows;
+  } catch (error) {
+    await client.query("rollback").catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+export async function markPublicReplySent(taskId, apiHeaders = null) {
+  if (!pool || !taskId) return null;
+
+  const result = await pool.query(
+    `
+      update automation_tasks
+      set
+        status = 'public_reply_sent',
+        public_reply_sent_at = now(),
+        attempt_count = attempt_count + 1,
+        locked_until = null,
+        locked_by = null,
+        last_api_headers = $2,
+        last_api_error = null,
+        updated_at = now()
+      where id = $1
+      returning ${taskSelectFields()}
+    `,
+    [taskId, apiHeaders ? JSON.stringify(apiHeaders) : null]
+  );
+
+  return result.rows[0] ?? null;
+}
+
+export async function markPrivateReplySent(taskId, apiHeaders = null) {
+  if (!pool || !taskId) return null;
+
+  const result = await pool.query(
+    `
+      update automation_tasks
+      set
+        status = 'sent',
+        dm_sent_at = now(),
+        attempt_count = attempt_count + 1,
+        locked_until = null,
+        locked_by = null,
+        last_api_headers = $2,
+        last_api_error = null,
+        updated_at = now()
+      where id = $1
+      returning ${taskSelectFields()}
+    `,
+    [taskId, apiHeaders ? JSON.stringify(apiHeaders) : null]
+  );
+
+  return result.rows[0] ?? null;
+}
+
+export async function rescheduleSendTask(taskId, status, scheduledAt, errorMessage, apiHeaders = null) {
+  if (!pool || !taskId) return null;
+
+  const column = status === "public_reply_sent" ? "dm_scheduled_at" : "public_reply_scheduled_at";
+  const result = await pool.query(
+    `
+      update automation_tasks
+      set
+        status = $2,
+        ${column} = $3,
+        attempt_count = attempt_count + 1,
+        locked_until = null,
+        locked_by = null,
+        last_api_headers = $4,
+        last_api_error = $5,
+        error_message = $5,
+        updated_at = now()
+      where id = $1
+      returning ${taskSelectFields()}
+    `,
+    [taskId, status, scheduledAt, apiHeaders ? JSON.stringify(apiHeaders) : null, errorMessage]
+  );
+
+  return result.rows[0] ?? null;
+}
+
+export async function markSendTaskError(taskId, errorMessage, apiHeaders = null) {
+  if (!pool || !taskId) return null;
+
+  const result = await pool.query(
+    `
+      update automation_tasks
+      set
+        status = 'error',
+        attempt_count = attempt_count + 1,
+        locked_until = null,
+        locked_by = null,
+        last_api_headers = $2,
+        last_api_error = $3,
+        error_message = $3,
+        updated_at = now()
+      where id = $1
+      returning ${taskSelectFields()}
+    `,
+    [taskId, apiHeaders ? JSON.stringify(apiHeaders) : null, errorMessage]
+  );
+
+  return result.rows[0] ?? null;
+}
+
+export async function getOutboundSendCount(minutes) {
+  if (!pool) return 0;
+
+  const result = await pool.query(
+    `
+      select count(*)::int as count
+      from automation_task_steps
+      where
+        step_key in ('public_reply', 'private_reply')
+        and status = 'success'
+        and created_at >= now() - ($1::text || ' minutes')::interval
+    `,
+    [String(minutes)]
+  );
+
+  return result.rows[0]?.count ?? 0;
+}
+
 export async function getStats() {
   if (!pool) return null;
 
-  const [flows, posts, processed, errors, webhook, tasks, ready, events] = await Promise.all([
+  const [flows, posts, processed, errors, webhook, tasks, ready, queued, events] = await Promise.all([
     pool.query("select count(*)::int as count from automation_flows where enabled = true"),
     pool.query("select count(*)::int as count from media_posts where active = true"),
     pool.query(
@@ -1122,6 +1445,7 @@ export async function getStats() {
       `
     ),
     pool.query("select count(*)::int as count from automation_tasks where status = 'ready_to_send'"),
+    pool.query("select count(*)::int as count from automation_tasks where status in ('scheduled_to_send', 'public_reply_sent', 'sending_public', 'sending_dm')"),
     pool.query("select count(*)::int as count from events")
   ]);
 
@@ -1133,6 +1457,7 @@ export async function getStats() {
     webhookToday: webhook.rows[0].count,
     tasksToday: tasks.rows[0].count,
     readyTasks: ready.rows[0].count,
+    queuedTasks: queued.rows[0].count,
     recentEvents: events.rows[0].count
   };
 }
@@ -1152,6 +1477,15 @@ function taskSelectFields(alias = "") {
     ${prefix}public_reply as "publicReply",
     ${prefix}private_reply as "privateReply",
     ${prefix}error_message as "errorMessage",
+    ${prefix}public_reply_scheduled_at as "publicReplyScheduledAt",
+    ${prefix}public_reply_sent_at as "publicReplySentAt",
+    ${prefix}dm_scheduled_at as "dmScheduledAt",
+    ${prefix}dm_sent_at as "dmSentAt",
+    ${prefix}attempt_count as "attemptCount",
+    ${prefix}locked_until as "lockedUntil",
+    ${prefix}locked_by as "lockedBy",
+    ${prefix}last_api_headers as "lastApiHeaders",
+    ${prefix}last_api_error as "lastApiError",
     ${prefix}created_at as "createdAt",
     ${prefix}updated_at as "updatedAt"
   `;

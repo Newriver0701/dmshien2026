@@ -251,9 +251,15 @@
 
       .mini-metrics {
         display: grid;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
+        grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
         gap: 8px;
         margin: 10px 0;
+      }
+
+      .settings-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 10px;
       }
 
       .mini-metric {
@@ -482,6 +488,7 @@
         main,
         .hero,
         .grid,
+        .settings-grid,
         .metrics {
           grid-template-columns: 1fr;
         }
@@ -533,6 +540,7 @@
           <section class="metric"><span>自動送信</span><strong id="m-auto">OFF</strong></section>
           <section class="metric"><span>今日のタスク</span><strong id="m-tasks">0</strong></section>
           <section class="metric"><span>送信待ち</span><strong id="m-ready">0</strong></section>
+          <section class="metric"><span>待機中</span><strong id="m-queued">0</strong></section>
           <section class="metric"><span>今日Webhook</span><strong id="m-webhook">0</strong></section>
           <section class="metric"><span>今日DM送信</span><strong id="m-sent">0</strong></section>
           <section class="metric"><span>今日エラー</span><strong id="m-errors">0</strong></section>
@@ -557,8 +565,58 @@
             <div class="step"><div class="step-no">1</div><div><h3>Webhook Trigger</h3><p class="hint">Instagramコメントを受信してタスクを作成</p></div><span class="badge good">active</span></div>
             <div class="step"><div class="step-no">2</div><div><h3>Choice Detection</h3><p class="hint">ルール判定。判定不能ならDeepSeek JSON判定</p></div><span class="badge" id="b-ai-choice">AI</span></div>
             <div class="step"><div class="step-no">3</div><div><h3>Generate Tarot Reading</h3><p class="hint">初コメント時に投稿キャプションから1/2/3の鑑定文を生成</p></div><span class="badge" id="b-ai-reading">AI</span></div>
-            <div class="step"><div class="step-no">4</div><div><h3>Public Reply</h3><p class="hint">{choice}を共通テンプレートに差し込み、ランダム送信</p></div><span class="badge">template</span></div>
+            <div class="step"><div class="step-no">4</div><div><h3>Send Timing</h3><p class="hint">公開返信は120〜600秒後、DMはさらに180〜600秒後。複数コメントは並列で処理</p></div><span class="badge">delay</span></div>
             <div class="step"><div class="step-no">5</div><div><h3>Private Reply DM</h3><p class="hint">選ばれた番号の鑑定文をcomment_id宛に送信</p></div><span class="badge warn" id="b-auto">paused</span></div>
+          </div>
+          <div class="field">
+            <label>送信タイミング</label>
+            <div class="settings-grid">
+              <div>
+                <label for="public-min">公開返信 最短秒</label>
+                <input id="public-min" type="number" min="0" max="3600" step="1" />
+              </div>
+              <div>
+                <label for="public-max">公開返信 最長秒</label>
+                <input id="public-max" type="number" min="0" max="3600" step="1" />
+              </div>
+              <div>
+                <label for="dm-min">DM 最短秒</label>
+                <input id="dm-min" type="number" min="0" max="3600" step="1" />
+              </div>
+              <div>
+                <label for="dm-max">DM 最長秒</label>
+                <input id="dm-max" type="number" min="0" max="3600" step="1" />
+              </div>
+            </div>
+            <p class="hint">DMの秒数は、公開返信が送られた後に追加で待つ時間です。</p>
+          </div>
+          <div class="field">
+            <label>送信上限と制限時の停止</label>
+            <div class="settings-grid">
+              <div>
+                <label for="max-hour">1時間の上限</label>
+                <input id="max-hour" type="number" min="1" max="5000" step="1" />
+              </div>
+              <div>
+                <label for="max-day">24時間の上限</label>
+                <input id="max-day" type="number" min="1" max="50000" step="1" />
+              </div>
+              <div>
+                <label for="pause-minutes">制限時の停止分</label>
+                <input id="pause-minutes" type="number" min="1" max="1440" step="1" />
+              </div>
+              <div>
+                <label for="pause-on-rate">Meta制限で停止</label>
+                <select id="pause-on-rate">
+                  <option value="true">ON</option>
+                  <option value="false">OFF</option>
+                </select>
+              </div>
+              <div>
+                <label for="max-parallel">同時送信数</label>
+                <input id="max-parallel" type="number" min="1" max="50" step="1" />
+              </div>
+            </div>
           </div>
           <div class="field">
             <div class="head">
@@ -720,6 +778,7 @@
         document.getElementById("m-auto").textContent = settings.automationEnabled ? "ON" : "OFF";
         document.getElementById("m-tasks").textContent = data.stats.tasksToday ?? 0;
         document.getElementById("m-ready").textContent = data.stats.readyTasks ?? 0;
+        document.getElementById("m-queued").textContent = data.stats.queuedTasks ?? 0;
         document.getElementById("m-webhook").textContent = data.stats.webhookToday ?? 0;
         document.getElementById("m-sent").textContent = data.stats.sentToday ?? 0;
         document.getElementById("m-errors").textContent = data.stats.errorsToday ?? 0;
@@ -751,6 +810,15 @@
         document.getElementById("toggle-ai-reading").textContent = settings.aiReadingEnabled ? "鑑定AIをOFF" : "鑑定AIをON";
         document.getElementById("m-target").textContent = targetModeLabel(settings.targetMode);
         document.getElementById("target-mode").value = settings.targetMode || "all_posts";
+        document.getElementById("public-min").value = settings.publicReplyMinDelaySec ?? 120;
+        document.getElementById("public-max").value = settings.publicReplyMaxDelaySec ?? 600;
+        document.getElementById("dm-min").value = settings.dmAfterPublicMinDelaySec ?? 180;
+        document.getElementById("dm-max").value = settings.dmAfterPublicMaxDelaySec ?? 600;
+        document.getElementById("max-hour").value = settings.maxSendsPerHour ?? 150;
+        document.getElementById("max-day").value = settings.maxSendsPerDay ?? 1000;
+        document.getElementById("max-parallel").value = settings.maxParallelSends ?? 8;
+        document.getElementById("pause-minutes").value = settings.rateLimitPauseMinutes ?? 30;
+        document.getElementById("pause-on-rate").value = String(settings.pauseOnRateLimit !== false);
       }
 
       async function toggleAutomation() {
@@ -773,7 +841,21 @@
           .map((item) => item.value.trim())
           .filter(Boolean);
         const targetMode = document.getElementById("target-mode").value;
-        const data = await put("/api/settings", { settings: { publicReplyTemplates, targetMode } });
+        const data = await put("/api/settings", {
+          settings: {
+            publicReplyTemplates,
+            targetMode,
+            publicReplyMinDelaySec: document.getElementById("public-min").value,
+            publicReplyMaxDelaySec: document.getElementById("public-max").value,
+            dmAfterPublicMinDelaySec: document.getElementById("dm-min").value,
+            dmAfterPublicMaxDelaySec: document.getElementById("dm-max").value,
+            maxSendsPerHour: document.getElementById("max-hour").value,
+            maxSendsPerDay: document.getElementById("max-day").value,
+            maxParallelSends: document.getElementById("max-parallel").value,
+            rateLimitPauseMinutes: document.getElementById("pause-minutes").value,
+            pauseOnRateLimit: document.getElementById("pause-on-rate").value === "true"
+          }
+        });
         settings = data.settings;
         renderSettings();
         showAi({ ok: true, message: "設定を保存しました", settings });
@@ -847,6 +929,12 @@
             ${row("判定方法", escapeHtml(task.choiceMethod || "-"))}
             ${row("公開返信", escapeHtml(task.publicReply || "なし"))}
             ${row("DM本文", escapeHtml(task.privateReply || "なし"))}
+            ${row("公開返信予定", escapeHtml(formatDate(task.publicReplyScheduledAt) || "なし"))}
+            ${row("公開返信送信", escapeHtml(formatDate(task.publicReplySentAt) || "なし"))}
+            ${row("DM送信予定", escapeHtml(formatDate(task.dmScheduledAt) || "なし"))}
+            ${row("DM送信", escapeHtml(formatDate(task.dmSentAt) || "なし"))}
+            ${row("試行回数", escapeHtml(String(task.attemptCount ?? 0)))}
+            ${row("最後のAPI使用量", task.lastApiHeaders ? `<pre class="pre">${escapeHtml(JSON.stringify(task.lastApiHeaders, null, 2))}</pre>` : "なし")}
             ${row("エラー", task.errorMessage ? `<span class="bad-text">${escapeHtml(task.errorMessage)}</span>` : "なし")}
           </div>
           <div class="field">
@@ -919,7 +1007,7 @@
                 </div>
               </div>
               <p><code>${escapeHtml(item.mediaId)}</code></p>
-              <p class="muted">IGコメント ${item.commentsCount ?? "-"} / 保存済み ${item.savedCommentCount ?? 0} / 送信待ち ${item.readyTaskCount ?? 0} / 送信済み ${item.sentTaskCount ?? 0}</p>
+              <p class="muted">IGコメント ${item.commentsCount ?? "-"} / 保存済み ${item.savedCommentCount ?? 0} / 送信待ち ${item.readyTaskCount ?? 0} / 待機中 ${item.queuedTaskCount ?? 0} / 送信済み ${item.sentTaskCount ?? 0}</p>
               <p class="caption">${escapeHtml(item.caption || "キャプションなし")}</p>
             </div>
           </div>
@@ -945,6 +1033,7 @@
               <div class="mini-metrics">
                 <div class="mini-metric"><span>保存コメント</span><strong>${item.savedCommentCount ?? 0}</strong></div>
                 <div class="mini-metric"><span>送信待ち</span><strong>${item.readyTaskCount ?? 0}</strong></div>
+                <div class="mini-metric"><span>待機中</span><strong>${item.queuedTaskCount ?? 0}</strong></div>
                 <div class="mini-metric"><span>送信済み</span><strong>${item.sentTaskCount ?? 0}</strong></div>
               </div>
               <p><code>${escapeHtml(item.mediaId)}</code></p>
@@ -1160,6 +1249,12 @@
           choice_detected: "番号判定済み",
           paused: "自動送信OFF",
           ready_to_send: "送信待ち",
+          scheduled_to_send: "送信待機中",
+          sending_public: "公開返信送信中",
+          public_reply_sent: "公開返信済み・DM待ち",
+          sending_dm: "DM送信中",
+          rate_limited: "制限で延期",
+          send_error: "送信エラー",
           sent: "DM送信済み",
           dm_sent: "DM送信済み",
           error: "エラー",
@@ -1215,7 +1310,7 @@
       }
 
       function statusClass(value) {
-        return ["sent", "dm_sent", "success"].includes(value) ? "good" : ["error", "bad"].includes(value) ? "bad" : ["paused", "skipped", "outside_target", "ready_to_send"].includes(value) ? "warn" : "";
+        return ["sent", "dm_sent", "success", "public_reply_sent"].includes(value) ? "good" : ["error", "bad", "send_error"].includes(value) ? "bad" : ["paused", "skipped", "outside_target", "ready_to_send", "scheduled_to_send", "sending_public", "sending_dm", "rate_limited"].includes(value) ? "warn" : "";
       }
 
       function labelForEnv(key) {
