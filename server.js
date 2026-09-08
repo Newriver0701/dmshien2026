@@ -1279,11 +1279,11 @@ async function generateAndSaveReading(media, taskId = null) {
     });
 
     try {
-      readings[choice] = await generateSingleReadingWithAi({
+      readings[choice] = neutralizeGenderedReading(await generateSingleReadingWithAi({
         theme,
         choice,
         card: cardMap[choice]
-      });
+      }));
       await addTaskStep(taskId, `reading_generate_${choice}`, "success", `${choice}番の鑑定文を生成しました`, {
         choice,
         card: cardMap[choice]
@@ -1328,7 +1328,7 @@ async function generateSingleReadingWithAi({ theme, choice, card }) {
     {
       role: "system",
       content:
-        "あなたは「紫炎（しえん）｜御魂導師」専属のタロット鑑定ライターです。Instagramリール専用の、静かでエモーショナルな三択タロット鑑定文を作成してください。JSON、コードブロック、箇条書き、CTAは禁止。プレーンテキストのみで出力してください。"
+        "あなたは「紫炎（しえん）｜御魂導師」専属のタロット鑑定ライターです。Instagramリール専用の、静かでエモーショナルな三択タロット鑑定文を作成してください。相手の性別は不明なので、彼、彼女、男性、女性など性別を断定する語は禁止し、相手は必ず「あの人」または「お相手」と表現してください。JSON、コードブロック、箇条書き、CTAは禁止。プレーンテキストのみで出力してください。"
     },
     {
       role: "user",
@@ -1356,8 +1356,13 @@ ${card}
 詩的で、映画のワンシーンのように描く。
 読後に余韻が残る文章。
 
+【性別表現】
+相手の性別は不明です。
+彼、彼女、男性、女性、男、女、旦那、奥さん、夫、妻など、性別や関係性を断定する言葉は禁止。
+相手を指す言葉は「あの人」「お相手」「その人」に統一してください。
+
 【禁止事項】
-CTA、占い解説、アドバイス口調、箇条書き、説明文、JSON、構造化出力。
+CTA、占い解説、アドバイス口調、箇条書き、説明文、JSON、構造化出力、性別断定。
 
 本文は約250〜350文字。${mark}と🔮は必ず入れてください。`
     }
@@ -1677,6 +1682,19 @@ function formatPrivateReply(template, values = {}) {
     (text, [key, value]) => text.replaceAll(`{${key}}`, String(value)),
     source
   ).trim();
+}
+
+function neutralizeGenderedReading(text) {
+  return String(text ?? "")
+    .replaceAll("彼女", "あの人")
+    .replaceAll("彼", "あの人")
+    .replaceAll("男性", "あの人")
+    .replaceAll("女性", "あの人")
+    .replaceAll("旦那さん", "お相手")
+    .replaceAll("旦那", "お相手")
+    .replaceAll("奥さん", "お相手")
+    .replaceAll("夫", "お相手")
+    .replaceAll("妻", "お相手");
 }
 
 function randomInt(minValue, maxValue) {
