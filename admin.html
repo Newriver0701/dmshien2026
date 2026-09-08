@@ -1031,6 +1031,7 @@
             </div>
             <p class="muted">Size: ${escapeHtml(formatBytes(asset.size))}</p>
             <p class="muted">Send URL: ${asset.driveContentUrl ? `<a href="${escapeHtml(asset.driveContentUrl)}" target="_blank" rel="noreferrer">Drive Content URL</a>` : `<span class="bad-text">Drive Content URLなし</span>`}</p>
+            <p class="muted">Pabbly送信対象: ${asset.driveContentUrl ? "Drive Content URL" : "再同期でDrive URL保存"}</p>
             <div class="actions">
               <a href="${escapeHtml(imageUrl)}" target="_blank" rel="noreferrer">拡大</a>
               ${asset.driveThumbnailUrl ? `<a href="${escapeHtml(asset.driveThumbnailUrl)}" target="_blank" rel="noreferrer">Driveサムネ</a>` : ""}
@@ -1102,6 +1103,9 @@
       }
 
       function renderTaskDetail(task, steps) {
+        const selectedMeta = latestStepMetadata(steps, "omikuji_selected");
+        const pabblyMeta = latestStepMetadata(steps, "pabbly_upload") || latestStepMetadata(steps, "omikuji_error");
+        const imageMeta = latestStepMetadata(steps, "omikuji_image");
         document.getElementById("task-detail").innerHTML = `
           <div class="kv">
             ${row("状態", escapeHtml(statusLabel(task.status)))}
@@ -1120,7 +1124,11 @@
             ${row("試行回数", escapeHtml(String(task.attemptCount ?? 0)))}
             ${row("おみくじ状態", escapeHtml(omikujiStatusLabel(task.omikujiStatus)))}
             ${row("おみくじ結果", escapeHtml(task.omikujiResult || "なし"))}
+            ${row("Drive元URL", selectedMeta?.driveSourceUrl ? `<a href="${escapeHtml(selectedMeta.driveSourceUrl)}" target="_blank" rel="noreferrer">${escapeHtml(selectedMeta.driveSourceUrl)}</a>` : "なし")}
+            ${row("Pabbly変換後URL", pabblyMeta?.pabblyFileUrl ? `<a href="${escapeHtml(pabblyMeta.pabblyFileUrl)}" target="_blank" rel="noreferrer">${escapeHtml(pabblyMeta.pabblyFileUrl)}</a>` : "なし")}
             ${row("おみくじ送信用画像URL", task.omikujiImageUrl ? `<a href="${escapeHtml(task.omikujiImageUrl)}" target="_blank" rel="noreferrer">${escapeHtml(task.omikujiImageUrl)}</a>` : "なし")}
+            ${row("Pabblyレスポンス", pabblyMeta?.pabblyResponse ? `<pre class="pre">${escapeHtml(JSON.stringify(pabblyMeta.pabblyResponse, null, 2))}</pre>` : "なし")}
+            ${row("Meta画像送信結果", imageMeta?.apiUsage ? `<pre class="pre">${escapeHtml(JSON.stringify(imageMeta.apiUsage, null, 2))}</pre>` : "なし")}
             ${row("おみくじ本文", escapeHtml(task.omikujiText || "なし"))}
             ${row("おみくじエラー", task.omikujiError ? `<span class="bad-text">${escapeHtml(task.omikujiError)}</span>` : "なし")}
             ${row("最後のAPI使用量", task.lastApiHeaders ? `<pre class="pre">${escapeHtml(JSON.stringify(task.lastApiHeaders, null, 2))}</pre>` : "なし")}
@@ -1157,8 +1165,13 @@
             </div>
             <p class="hint">${escapeHtml(formatDate(step.createdAt))}</p>
             <p class="caption">${escapeHtml(step.message || "")}</p>
+            ${step.metadata ? `<pre class="pre">${escapeHtml(JSON.stringify(step.metadata, null, 2))}</pre>` : ""}
           </div>
         `;
+      }
+
+      function latestStepMetadata(steps, stepKey) {
+        return [...steps].reverse().find((step) => step.stepKey === stepKey && step.metadata)?.metadata ?? null;
       }
 
       async function loadMedia() {
@@ -1537,6 +1550,10 @@
           OMIKUJI_FOLDER_CHUKICHI: "おみくじ 中吉フォルダー",
           OMIKUJI_FOLDER_KICHI: "おみくじ 吉フォルダー",
           OMIKUJI_FOLDER_DAIKICHI: "おみくじ 大吉フォルダー",
+          PABBLY_UPLOAD_API_URL: "Pabbly Upload API URL",
+          PABBLY_UPLOAD_API_TOKEN: "Pabbly Upload API Token",
+          PABBLY_WORKFLOW_STEP_ID: "Pabbly Workflow Step ID",
+          PABBLY_U_ID: "Pabbly U ID",
           PUBLIC_BASE_URL: "公開URL",
           GRAPH_BASE_URL: "Instagram API URL",
           GRAPH_API_VERSION: "Instagram API Version"

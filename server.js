@@ -80,6 +80,10 @@ const {
   OMIKUJI_FOLDER_CHUKICHI,
   OMIKUJI_FOLDER_KICHI,
   OMIKUJI_FOLDER_DAIKICHI,
+  PABBLY_UPLOAD_API_URL,
+  PABBLY_UPLOAD_API_TOKEN,
+  PABBLY_WORKFLOW_STEP_ID = "",
+  PABBLY_U_ID = "",
   PUBLIC_BASE_URL,
   RAILWAY_PUBLIC_DOMAIN
 } = process.env;
@@ -187,6 +191,10 @@ app.get("/api/status", requireAdmin, async (_req, res) => {
       OMIKUJI_FOLDER_CHUKICHI: Boolean(OMIKUJI_FOLDER_CHUKICHI),
       OMIKUJI_FOLDER_KICHI: Boolean(OMIKUJI_FOLDER_KICHI),
       OMIKUJI_FOLDER_DAIKICHI: Boolean(OMIKUJI_FOLDER_DAIKICHI),
+      PABBLY_UPLOAD_API_URL: Boolean(PABBLY_UPLOAD_API_URL),
+      PABBLY_UPLOAD_API_TOKEN: Boolean(PABBLY_UPLOAD_API_TOKEN),
+      PABBLY_WORKFLOW_STEP_ID: Boolean(PABBLY_WORKFLOW_STEP_ID),
+      PABBLY_U_ID: Boolean(PABBLY_U_ID),
       PUBLIC_BASE_URL: publicBaseUrl() ?? "",
       GRAPH_BASE_URL,
       GRAPH_API_VERSION
@@ -1198,7 +1206,7 @@ async function sendOmikujiForTask(task, options = {}) {
 
   const settings = await getSettings();
   const asset = await pickOmikujiAsset();
-  const imageUrl = omikujiSendImageUrl(asset);
+  const driveSourceUrl = omikujiSendImageUrl(asset);
   const reading = task.mediaId ? await getMediaTarotReading(task.mediaId) : null;
   const omikujiText = formatOmikujiText(settings.omikujiTextTemplate, {
     result: asset.result,
@@ -1212,7 +1220,7 @@ async function sendOmikujiForTask(task, options = {}) {
     omikujiResult: asset.result,
     omikujiAssetId: asset.id,
     omikujiText,
-    omikujiImageUrl: imageUrl,
+    omikujiImageUrl: null,
     omikujiStatus: "sending",
     omikujiError: null
   });
@@ -1221,7 +1229,7 @@ async function sendOmikujiForTask(task, options = {}) {
     assetId: asset.id,
     driveFileId: asset.driveFileId,
     driveContentUrl: asset.driveContentUrl,
-    sendImageUrl: imageUrl,
+    driveSourceUrl,
     manual: Boolean(options.manual)
   });
 
@@ -1230,6 +1238,16 @@ async function sendOmikujiForTask(task, options = {}) {
     await addTaskStep(taskId, "omikuji_text", "success", "おみくじテキストDMを送信しました", {
       omikujiText,
       apiUsage: textResult.headers
+    });
+
+    const pabbly = await uploadOmikujiImageToPabbly(driveSourceUrl, asset);
+    const imageUrl = pabbly.fileUrl;
+    await updateAutomationTask(taskId, { omikujiImageUrl: imageUrl });
+    await addTaskStep(taskId, "pabbly_upload", "success", "Pabbly Upload APIで画像URLを変換しました", {
+      driveSourceUrl,
+      pabblyApiUrl: PABBLY_UPLOAD_API_URL,
+      pabblyFileUrl: imageUrl,
+      pabblyResponse: pabbly.response
     });
 
     const imageResult = await sendImageMessageToUser(task.userId, imageUrl);
@@ -1254,6 +1272,7 @@ async function sendOmikujiForTask(task, options = {}) {
     return updated ?? getAutomationTask(taskId);
   } catch (error) {
     const message = errorMessage(error);
+    const imageUrl = error?.imageUrl ?? null;
     if (settings.pauseOnRateLimit && isRateLimitError(error)) {
       const resumeAt = new Date(Date.now() + Number(settings.rateLimitPauseMinutes ?? 30) * 60 * 1000);
       await updateSettings({ sendPausedUntil: resumeAt.toISOString() });
@@ -1265,6 +1284,8 @@ async function sendOmikujiForTask(task, options = {}) {
     });
     await addTaskStep(taskId, "omikuji_error", "error", message, {
       imageUrl,
+      pabblyApiUrl: error?.pabblyApiUrl ?? null,
+      pabblyResponse: error?.pabblyResponse ?? null,
       apiUsage: error?.metaHeaders ?? null
     });
     addEvent({
@@ -1801,6 +1822,53 @@ async function sendImageMessageToUser(userId, imageUrl) {
   });
 }
 
+async function uploadOmikujiImageToPabbly(fileUrl, asset) {
+  if (!PABBLY_UPLOAD_API_URL) throw new Error("PABBLY_UPLOAD_API_URL is not set");
+  if (!PABBLY_UPLOAD_API_TOKEN) throw new Error("PABBLY_UPLOAD_API_TOKEN is not set");
+  if (!fileUrl) throw new Error("Drive Content URLがありません");
+
+  const body = {
+    file_url: fileUrl,
+    file_name: asset.driveFileId || asset.name || String(asset.id),
+    workflow_step_id: PABBLY_WORKFLOW_STEP_ID,
+    u_id: PABBLY_U_ID
+  };
+
+  const response = await fetch(PABBLY_UPLOAD_API_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${PABBLY_UPLOAD_API_TOKEN}`
+    },
+    body: JSON.stringify(body)
+  });
+  const text = await response.text();
+  const json = parseJsonText(text);
+
+  if (!response.ok) {
+    const message = json?.message || json?.error || text || `Pabbly Upload API error: ${response.status}`;
+    const error = new Error(String(message));
+    error.pabblyApiUrl = PABBLY_UPLOAD_API_URL;
+    error.pabblyResponse = json ?? text;
+    error.imageUrl = fileUrl;
+    throw error;
+  }
+
+  const pabblyFileUrl = json?.file_url;
+  if (!pabblyFileUrl) {
+    const error = new Error("Pabbly Upload API responseに file_url がありません");
+    error.pabblyApiUrl = PABBLY_UPLOAD_API_URL;
+    error.pabblyResponse = json ?? text;
+    error.imageUrl = fileUrl;
+    throw error;
+  }
+
+  return {
+    fileUrl: pabblyFileUrl,
+    response: json ?? text
+  };
+}
+
 async function syncOmikujiFolders() {
   if (!GOOGLE_DRIVE_API_KEY) throw new Error("GOOGLE_DRIVE_API_KEY is not set");
 
@@ -1815,15 +1883,15 @@ async function syncOmikujiFolders() {
     const files = await listDriveImages(folder.folderId);
     for (const file of files) {
       const asset = await upsertOmikujiAsset({
-      result: folder.result,
-      driveFileId: file.id,
-      name: file.name,
-      mimeType: file.mimeType,
-      driveContentUrl: file.webContentLink,
-      driveThumbnailUrl: file.thumbnailLink,
-      size: file.size,
-      enabled: true
-    });
+        result: folder.result,
+        driveFileId: file.id,
+        name: file.name,
+        mimeType: file.mimeType,
+        driveContentUrl: driveContentUrlForFile(file),
+        driveThumbnailUrl: file.thumbnailLink,
+        size: file.size,
+        enabled: true
+      });
       synced.push(asset);
     }
     addEvent({
@@ -1846,6 +1914,8 @@ async function listDriveImages(folderId) {
   url.searchParams.set("key", GOOGLE_DRIVE_API_KEY);
   url.searchParams.set("pageSize", "1000");
   url.searchParams.set("fields", "files(id,name,mimeType,modifiedTime,size,webContentLink,thumbnailLink,capabilities/canDownload)");
+  url.searchParams.set("supportsAllDrives", "true");
+  url.searchParams.set("includeItemsFromAllDrives", "true");
   url.searchParams.set("q", `'${folderId}' in parents and mimeType contains 'image/' and trashed = false`);
 
   const json = await fetchJson(url);
@@ -1895,6 +1965,14 @@ function addEvent(event) {
 
 function errorMessage(error) {
   return error instanceof Error ? error.message : String(error);
+}
+
+function parseJsonText(text) {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
 }
 
 function expiresAt(expiresIn) {
@@ -2047,6 +2125,12 @@ function publicBaseUrlOrThrow() {
 function omikujiSendImageUrl(asset) {
   if (asset.driveContentUrl) return asset.driveContentUrl;
   return `${publicBaseUrlOrThrow()}/omikuji-image/${asset.id}/image.jpg`;
+}
+
+function driveContentUrlForFile(file) {
+  if (file.webContentLink) return file.webContentLink;
+  if (!file.id) return "";
+  return `https://drive.google.com/uc?export=download&id=${encodeURIComponent(file.id)}`;
 }
 
 function neutralizeGenderedReading(text) {
