@@ -37,6 +37,8 @@ DEEPSEEK_API_KEY=DeepSeekのAPIキー
 DEEPSEEK_BASE_URL=https://api.deepseek.com
 DEEPSEEK_MODEL=deepseek-v4-flash
 GOOGLE_DRIVE_API_KEY=Google Drive APIキー
+OMIKUJI_FOLDER_KYOU=凶フォルダーIDまたはURL
+OMIKUJI_FOLDER_SUEKICHI=末吉フォルダーIDまたはURL
 OMIKUJI_FOLDER_SHOKICHI=小吉フォルダーIDまたはURL
 OMIKUJI_FOLDER_CHUKICHI=中吉フォルダーIDまたはURL
 OMIKUJI_FOLDER_KICHI=吉フォルダーIDまたはURL
@@ -75,7 +77,7 @@ https://YOUR-RAILWAY-DOMAIN.up.railway.app/admin
 
 DM本文は `Workflows` の `DM本文フォーマット` で編集できます。投稿ごとに生成した鑑定文は `{reading}` に入り、前後に固定文を足せます。使える変数は `{theme}`、`{reading}`、`{displayName}`、`{honorific}`、`{username}`、`{choice}`、`{card}` です。`{displayName}` はユーザー名が取れた時は `username`、取れない時は `あなた` になります。`{honorific}` はユーザー名が取れた時だけ `さん` になります。
 
-おみくじは `Omikuji` の `Drive画像を同期` で、4つのDriveフォルダーから画像をDBに取り込みます。結果は `小吉 / 中吉 / 吉 / 大吉` を均等にランダム選択し、その結果フォルダー内から画像を1枚選びます。おみくじ本文には `{displayName}`、`{honorific}`、`{result}`、`{theme}`、`{choice}`、`{card}` が使えます。追加DMには `user_id` が必要です。
+おみくじは `Omikuji` の `Drive画像を同期` で、結果別のDriveフォルダーから画像をDBに取り込みます。対応結果は `凶 / 末吉 / 小吉 / 中吉 / 吉 / 大吉` です。フォルダー未設定の結果はスキップし、同期済み画像がある結果だけを均等にランダム選択して、その結果フォルダー内から画像を1枚選びます。おみくじ本文には `{displayName}`、`{honorific}`、`{result}`、`{theme}`、`{choice}`、`{card}` が使えます。追加DMには `user_id` が必要です。
 
 送信対象は初期状態で `全投稿` です。マーカー付きの投稿だけに絞りたい時は、`Workflows` の `対象投稿` を `マーカー付きのみ` に変更してください。
 

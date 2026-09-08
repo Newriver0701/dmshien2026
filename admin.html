@@ -742,11 +742,13 @@
           <div class="head">
             <div>
               <h2>Omikuji</h2>
-              <p class="hint">Google Driveの4フォルダーから画像を同期し、結果を均等ランダムで送ります。</p>
+              <p class="hint">Google Driveの結果別フォルダーから画像を同期し、同期済みの結果を均等ランダムで送ります。</p>
             </div>
             <button id="sync-omikuji" class="primary">Drive画像を同期</button>
           </div>
           <div class="metrics">
+            <section class="metric"><span>凶</span><strong id="omikuji-kyou">0</strong></section>
+            <section class="metric"><span>末吉</span><strong id="omikuji-suekichi">0</strong></section>
             <section class="metric"><span>小吉</span><strong id="omikuji-shokichi">0</strong></section>
             <section class="metric"><span>中吉</span><strong id="omikuji-chukichi">0</strong></section>
             <section class="metric"><span>吉</span><strong id="omikuji-kichi">0</strong></section>
@@ -938,6 +940,8 @@
       async function loadOmikuji() {
         const data = await request("/api/omikuji-assets");
         const counts = data.counts ?? {};
+        document.getElementById("omikuji-kyou").textContent = counts["凶"] ?? 0;
+        document.getElementById("omikuji-suekichi").textContent = counts["末吉"] ?? 0;
         document.getElementById("omikuji-shokichi").textContent = counts["小吉"] ?? 0;
         document.getElementById("omikuji-chukichi").textContent = counts["中吉"] ?? 0;
         document.getElementById("omikuji-kichi").textContent = counts["吉"] ?? 0;
@@ -1440,6 +1444,8 @@
           DEEPSEEK_BASE_URL: "DeepSeek API URL",
           DEEPSEEK_MODEL: "DeepSeek Model",
           GOOGLE_DRIVE_API_KEY: "Google Drive API Key",
+          OMIKUJI_FOLDER_KYOU: "おみくじ 凶フォルダー",
+          OMIKUJI_FOLDER_SUEKICHI: "おみくじ 末吉フォルダー",
           OMIKUJI_FOLDER_SHOKICHI: "おみくじ 小吉フォルダー",
           OMIKUJI_FOLDER_CHUKICHI: "おみくじ 中吉フォルダー",
           OMIKUJI_FOLDER_KICHI: "おみくじ 吉フォルダー",

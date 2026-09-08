@@ -1545,7 +1545,9 @@ export async function getOmikujiAssets() {
         when '吉' then 2
         when '中吉' then 3
         when '小吉' then 4
-        else 5
+        when '末吉' then 5
+        when '凶' then 6
+        else 7
       end,
       name asc nulls last
   `);

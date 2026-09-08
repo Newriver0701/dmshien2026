@@ -74,6 +74,8 @@ const {
   DEEPSEEK_BASE_URL = "https://api.deepseek.com",
   DEEPSEEK_MODEL = "deepseek-v4-flash",
   GOOGLE_DRIVE_API_KEY,
+  OMIKUJI_FOLDER_KYOU,
+  OMIKUJI_FOLDER_SUEKICHI,
   OMIKUJI_FOLDER_SHOKICHI,
   OMIKUJI_FOLDER_CHUKICHI,
   OMIKUJI_FOLDER_KICHI,
@@ -89,7 +91,7 @@ const workerId = `worker-${process.pid}-${Math.random().toString(36).slice(2)}`;
 let sendQueueBusy = false;
 const COMMENT_FIELDS = "id,text,username,timestamp,like_count,hidden,from";
 const COMMENT_FIELDS_DETAILED = "id,text,username,timestamp,like_count,hidden,from{id,username}";
-const OMIKUJI_RESULTS = ["小吉", "中吉", "吉", "大吉"];
+const OMIKUJI_RESULTS = ["凶", "末吉", "小吉", "中吉", "吉", "大吉"];
 
 app.get("/", (_req, res) => {
   res.redirect("/admin");
@@ -179,6 +181,8 @@ app.get("/api/status", requireAdmin, async (_req, res) => {
       DEEPSEEK_BASE_URL,
       DEEPSEEK_MODEL,
       GOOGLE_DRIVE_API_KEY: Boolean(GOOGLE_DRIVE_API_KEY),
+      OMIKUJI_FOLDER_KYOU: Boolean(OMIKUJI_FOLDER_KYOU),
+      OMIKUJI_FOLDER_SUEKICHI: Boolean(OMIKUJI_FOLDER_SUEKICHI),
       OMIKUJI_FOLDER_SHOKICHI: Boolean(OMIKUJI_FOLDER_SHOKICHI),
       OMIKUJI_FOLDER_CHUKICHI: Boolean(OMIKUJI_FOLDER_CHUKICHI),
       OMIKUJI_FOLDER_KICHI: Boolean(OMIKUJI_FOLDER_KICHI),
@@ -1799,12 +1803,12 @@ async function syncOmikujiFolders() {
 
   const folders = omikujiFolders();
   const synced = [];
-  const missing = folders.filter((folder) => !folder.folderId);
-  if (missing.length > 0) {
-    throw new Error(`おみくじフォルダー未設定: ${missing.map((item) => item.result).join(", ")}`);
+  const configuredFolders = folders.filter((folder) => folder.folderId);
+  if (configuredFolders.length === 0) {
+    throw new Error("おみくじフォルダーが1つも設定されていません");
   }
 
-  for (const folder of folders) {
+  for (const folder of configuredFolders) {
     const files = await listDriveImages(folder.folderId);
     for (const file of files) {
       const asset = await upsertOmikujiAsset({
@@ -1979,7 +1983,11 @@ function formatOmikujiText(template, values = {}) {
 }
 
 async function pickOmikujiAsset() {
-  const result = OMIKUJI_RESULTS[Math.floor(Math.random() * OMIKUJI_RESULTS.length)];
+  const assets = await getOmikujiAssets();
+  const counts = countOmikujiAssets(assets);
+  const availableResults = OMIKUJI_RESULTS.filter((result) => counts[result] > 0);
+  if (availableResults.length === 0) throw new Error("有効なおみくじ画像がありません。Drive同期を確認してください");
+  const result = availableResults[Math.floor(Math.random() * availableResults.length)];
   const asset = await getRandomOmikujiAssetByResult(result);
   if (!asset) throw new Error(`${result}のおみくじ画像がありません。Drive同期を確認してください`);
   return asset;
@@ -1987,6 +1995,8 @@ async function pickOmikujiAsset() {
 
 function omikujiFolders() {
   return [
+    { result: "凶", folderId: parseDriveFolderId(OMIKUJI_FOLDER_KYOU) },
+    { result: "末吉", folderId: parseDriveFolderId(OMIKUJI_FOLDER_SUEKICHI) },
     { result: "小吉", folderId: parseDriveFolderId(OMIKUJI_FOLDER_SHOKICHI) },
     { result: "中吉", folderId: parseDriveFolderId(OMIKUJI_FOLDER_CHUKICHI) },
     { result: "吉", folderId: parseDriveFolderId(OMIKUJI_FOLDER_KICHI) },
