@@ -176,6 +176,9 @@ export async function initDatabase(flows = []) {
         drive_file_id text not null unique,
         name text,
         mime_type text,
+        drive_content_url text,
+        drive_thumbnail_url text,
+        size bigint,
         enabled boolean not null default true,
         last_synced_at timestamptz not null default now(),
         created_at timestamptz not null default now(),
@@ -287,6 +290,10 @@ export async function initDatabase(flows = []) {
       alter table automation_tasks add column if not exists omikuji_image_url text;
       alter table automation_tasks add column if not exists omikuji_status text;
       alter table automation_tasks add column if not exists omikuji_error text;
+
+      alter table omikuji_assets add column if not exists drive_content_url text;
+      alter table omikuji_assets add column if not exists drive_thumbnail_url text;
+      alter table omikuji_assets add column if not exists size bigint;
     `);
 
     await seedSettings();
@@ -1491,13 +1498,17 @@ export async function upsertOmikujiAsset(asset) {
   const result = await pool.query(
     `
       insert into omikuji_assets (
-        result, drive_file_id, name, mime_type, enabled, last_synced_at, updated_at
+        result, drive_file_id, name, mime_type, drive_content_url, drive_thumbnail_url, size,
+        enabled, last_synced_at, updated_at
       )
-      values ($1, $2, $3, $4, $5, now(), now())
+      values ($1, $2, $3, $4, $5, $6, $7, $8, now(), now())
       on conflict (drive_file_id) do update set
         result = excluded.result,
         name = excluded.name,
         mime_type = excluded.mime_type,
+        drive_content_url = excluded.drive_content_url,
+        drive_thumbnail_url = excluded.drive_thumbnail_url,
+        size = excluded.size,
         enabled = omikuji_assets.enabled,
         last_synced_at = now(),
         updated_at = now()
@@ -1507,6 +1518,9 @@ export async function upsertOmikujiAsset(asset) {
         drive_file_id as "driveFileId",
         name,
         mime_type as "mimeType",
+        drive_content_url as "driveContentUrl",
+        drive_thumbnail_url as "driveThumbnailUrl",
+        size,
         enabled,
         last_synced_at as "lastSyncedAt",
         created_at as "createdAt",
@@ -1517,6 +1531,9 @@ export async function upsertOmikujiAsset(asset) {
       asset.driveFileId,
       asset.name ?? null,
       asset.mimeType ?? null,
+      asset.driveContentUrl ?? null,
+      asset.driveThumbnailUrl ?? null,
+      asset.size ?? null,
       asset.enabled !== false
     ]
   );
@@ -1534,6 +1551,9 @@ export async function getOmikujiAssets() {
       drive_file_id as "driveFileId",
       name,
       mime_type as "mimeType",
+      drive_content_url as "driveContentUrl",
+      drive_thumbnail_url as "driveThumbnailUrl",
+      size,
       enabled,
       last_synced_at as "lastSyncedAt",
       created_at as "createdAt",
@@ -1566,6 +1586,9 @@ export async function getOmikujiAsset(assetId) {
         drive_file_id as "driveFileId",
         name,
         mime_type as "mimeType",
+        drive_content_url as "driveContentUrl",
+        drive_thumbnail_url as "driveThumbnailUrl",
+        size,
         enabled,
         last_synced_at as "lastSyncedAt",
         created_at as "createdAt",
@@ -1593,6 +1616,9 @@ export async function setOmikujiAssetEnabled(assetId, enabled) {
         drive_file_id as "driveFileId",
         name,
         mime_type as "mimeType",
+        drive_content_url as "driveContentUrl",
+        drive_thumbnail_url as "driveThumbnailUrl",
+        size,
         enabled,
         last_synced_at as "lastSyncedAt",
         created_at as "createdAt",
@@ -1615,6 +1641,9 @@ export async function getRandomOmikujiAssetByResult(result) {
         drive_file_id as "driveFileId",
         name,
         mime_type as "mimeType",
+        drive_content_url as "driveContentUrl",
+        drive_thumbnail_url as "driveThumbnailUrl",
+        size,
         enabled,
         last_synced_at as "lastSyncedAt",
         created_at as "createdAt",

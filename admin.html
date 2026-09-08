@@ -1029,8 +1029,11 @@
               </div>
               <div class="omikuji-name">${escapeHtml(asset.name || "")}</div>
             </div>
+            <p class="muted">Size: ${escapeHtml(formatBytes(asset.size))}</p>
+            <p class="muted">Send URL: ${asset.driveContentUrl ? `<a href="${escapeHtml(asset.driveContentUrl)}" target="_blank" rel="noreferrer">Drive Content URL</a>` : `<span class="bad-text">Drive Content URLなし</span>`}</p>
             <div class="actions">
               <a href="${escapeHtml(imageUrl)}" target="_blank" rel="noreferrer">拡大</a>
+              ${asset.driveThumbnailUrl ? `<a href="${escapeHtml(asset.driveThumbnailUrl)}" target="_blank" rel="noreferrer">Driveサムネ</a>` : ""}
               <button data-toggle-omikuji-asset="${escapeHtml(asset.id)}" data-enabled="${asset.enabled ? "true" : "false"}">${asset.enabled ? "停止" : "有効化"}</button>
             </div>
           </div>
@@ -1117,7 +1120,7 @@
             ${row("試行回数", escapeHtml(String(task.attemptCount ?? 0)))}
             ${row("おみくじ状態", escapeHtml(omikujiStatusLabel(task.omikujiStatus)))}
             ${row("おみくじ結果", escapeHtml(task.omikujiResult || "なし"))}
-            ${row("おみくじ画像", task.omikujiImageUrl ? `<a href="${escapeHtml(task.omikujiImageUrl)}" target="_blank" rel="noreferrer">画像を開く</a>` : "なし")}
+            ${row("おみくじ送信用画像URL", task.omikujiImageUrl ? `<a href="${escapeHtml(task.omikujiImageUrl)}" target="_blank" rel="noreferrer">${escapeHtml(task.omikujiImageUrl)}</a>` : "なし")}
             ${row("おみくじ本文", escapeHtml(task.omikujiText || "なし"))}
             ${row("おみくじエラー", task.omikujiError ? `<span class="bad-text">${escapeHtml(task.omikujiError)}</span>` : "なし")}
             ${row("最後のAPI使用量", task.lastApiHeaders ? `<pre class="pre">${escapeHtml(JSON.stringify(task.lastApiHeaders, null, 2))}</pre>` : "なし")}
@@ -1550,6 +1553,14 @@
 
       function formatDate(value) {
         return value ? new Date(value).toLocaleString() : "";
+      }
+
+      function formatBytes(value) {
+        const bytes = Number(value);
+        if (!Number.isFinite(bytes) || bytes <= 0) return "-";
+        if (bytes < 1024) return `${bytes} B`;
+        if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+        return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
       }
 
       function escapeHtml(value) {

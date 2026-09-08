@@ -140,7 +140,7 @@ app.get("/privacy", (_req, res) => {
 </html>`);
 });
 
-app.get("/omikuji-image/:assetId", async (req, res) => {
+app.get(["/omikuji-image/:assetId", "/omikuji-image/:assetId/image.jpg"], async (req, res) => {
   try {
     const asset = await getOmikujiAsset(req.params.assetId);
     if (!asset || asset.enabled === false) return res.status(404).send("not found");
@@ -1198,7 +1198,7 @@ async function sendOmikujiForTask(task, options = {}) {
 
   const settings = await getSettings();
   const asset = await pickOmikujiAsset();
-  const imageUrl = `${publicBaseUrlOrThrow()}/omikuji-image/${asset.id}`;
+  const imageUrl = omikujiSendImageUrl(asset);
   const reading = task.mediaId ? await getMediaTarotReading(task.mediaId) : null;
   const omikujiText = formatOmikujiText(settings.omikujiTextTemplate, {
     result: asset.result,
@@ -1220,6 +1220,8 @@ async function sendOmikujiForTask(task, options = {}) {
     result: asset.result,
     assetId: asset.id,
     driveFileId: asset.driveFileId,
+    driveContentUrl: asset.driveContentUrl,
+    sendImageUrl: imageUrl,
     manual: Boolean(options.manual)
   });
 
@@ -1262,6 +1264,7 @@ async function sendOmikujiForTask(task, options = {}) {
       lastApiHeaders: error?.metaHeaders ?? null
     });
     await addTaskStep(taskId, "omikuji_error", "error", message, {
+      imageUrl,
       apiUsage: error?.metaHeaders ?? null
     });
     addEvent({
@@ -1812,12 +1815,15 @@ async function syncOmikujiFolders() {
     const files = await listDriveImages(folder.folderId);
     for (const file of files) {
       const asset = await upsertOmikujiAsset({
-        result: folder.result,
-        driveFileId: file.id,
-        name: file.name,
-        mimeType: file.mimeType,
-        enabled: true
-      });
+      result: folder.result,
+      driveFileId: file.id,
+      name: file.name,
+      mimeType: file.mimeType,
+      driveContentUrl: file.webContentLink,
+      driveThumbnailUrl: file.thumbnailLink,
+      size: file.size,
+      enabled: true
+    });
       synced.push(asset);
     }
     addEvent({
@@ -1839,7 +1845,7 @@ async function listDriveImages(folderId) {
   const url = new URL("https://www.googleapis.com/drive/v3/files");
   url.searchParams.set("key", GOOGLE_DRIVE_API_KEY);
   url.searchParams.set("pageSize", "1000");
-  url.searchParams.set("fields", "files(id,name,mimeType,modifiedTime,size)");
+  url.searchParams.set("fields", "files(id,name,mimeType,modifiedTime,size,webContentLink,thumbnailLink,capabilities/canDownload)");
   url.searchParams.set("q", `'${folderId}' in parents and mimeType contains 'image/' and trashed = false`);
 
   const json = await fetchJson(url);
@@ -2036,6 +2042,11 @@ function publicBaseUrlOrThrow() {
   const baseUrl = publicBaseUrl();
   if (!baseUrl) throw new Error("PUBLIC_BASE_URL または RAILWAY_PUBLIC_DOMAIN が必要です");
   return baseUrl;
+}
+
+function omikujiSendImageUrl(asset) {
+  if (asset.driveContentUrl) return asset.driveContentUrl;
+  return `${publicBaseUrlOrThrow()}/omikuji-image/${asset.id}/image.jpg`;
 }
 
 function neutralizeGenderedReading(text) {
