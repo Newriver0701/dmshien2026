@@ -821,6 +821,7 @@
               <button id="pabbly-test-upload" class="primary">Pabbly Uploadをテスト</button>
             </div>
             <p class="hint">Instagram送信は行わず、Pabblyレスポンスの file_url だけ確認します。</p>
+            <div class="pre" id="pabbly-test-result">まだ実行していません。</div>
           </div>
           <div class="list" id="omikuji-list"></div>
         </section>
@@ -1196,12 +1197,14 @@
       async function testPabblyUpload() {
         const fileUrl = document.getElementById("pabbly-test-url").value.trim();
         const fileName = document.getElementById("pabbly-test-name").value.trim() || "pabbly-test";
-        if (!fileUrl) return showAi({ ok: false, error: "Drive Content URLを入れてください" });
-        showAi(await post("/api/pabbly/test-upload", { fileUrl, fileName }));
+        if (!fileUrl) return showPabbly({ ok: false, error: "Drive Content URLを入れてください" });
+        showPabbly({ ok: null, message: "Pabbly Upload APIを実行中..." });
+        showPabbly(await post("/api/pabbly/test-upload", { fileUrl, fileName }));
       }
 
       async function testPabblyAsset(assetId) {
-        showAi(await post("/api/pabbly/test-upload", { assetId }));
+        showPabbly({ ok: null, message: "同期済み画像でPabbly Upload APIを実行中...", assetId });
+        showPabbly(await post("/api/pabbly/test-upload", { assetId }));
       }
 
       async function loadMedia() {
@@ -1592,6 +1595,10 @@
 
       function showAi(data) {
         document.getElementById("ai-result").textContent = JSON.stringify(data, null, 2);
+      }
+
+      function showPabbly(data) {
+        document.getElementById("pabbly-test-result").textContent = JSON.stringify(data, null, 2);
       }
 
       function showToken(data) {

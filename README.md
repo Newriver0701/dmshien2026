@@ -83,7 +83,7 @@ DM本文は `Workflows` の `DM本文フォーマット` で編集できます�
 
 おみくじは `Omikuji` の `Drive画像を同期` で、結果別のDriveフォルダーから画像をDBに取り込みます。対応結果は `凶 / 末吉 / 小吉 / 中吉 / 吉 / 大吉` です。同期時にDriveの `webContentLink` を保存し、返らない場合は `https://drive.google.com/uc?export=download&id=FILE_ID` を生成します。画像DMではDrive Content URLをPabbly Upload APIへ渡し、Pabblyレスポンス直下の `file_url` をInstagramへ送ります。Pabblyが失敗した場合、Railway中継URLへは戻さず、画像DMだけエラーとしてタスクに残します。同期済み画像はOmikuji画面で結果別のサムネイル一覧として確認できます。おみくじ本文には `{displayName}`、`{honorific}`、`{result}`、`{theme}`、`{choice}`、`{card}` が使えます。追加DMには `user_id` が必要です。
 
-Pabbly連携はOmikuji画面の `Pabbly Uploadテスト` で確認できます。任意のDrive Content URLを貼るか、同期済み画像カードの `Pabblyテスト` を押すと、Instagram送信なしでPabblyの `file_url` 返却だけを確認できます。
+Pabbly連携はOmikuji画面の `Pabbly Uploadテスト` で確認できます。任意のDrive Content URLを貼るか、同期済み画像カードの `Pabblyテスト` を押すと、Instagram送信なしでPabblyの `file_url` 返却だけを確認できます。結果はOmikuji内の専用JSON欄に表示されます。
 
 送信対象は初期状態で `全投稿` です。マーカー付きの投稿だけに絞りたい時は、`Workflows` の `対象投稿` を `マーカー付きのみ` に変更してください。
 
