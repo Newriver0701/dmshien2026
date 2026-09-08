@@ -21,7 +21,10 @@ import {
   getMediaPost,
   getMediaPosts,
   getMediaTarotReading,
+  getOmikujiAsset,
+  getOmikujiAssets,
   getRecentEvents,
+  getRandomOmikujiAssetByResult,
   getSettings,
   getStats,
   getWebhookTodaySummary,
@@ -38,10 +41,12 @@ import {
   saveProcessedComment,
   scheduleAutomationTask,
   setFlowEnabled,
+  setOmikujiAssetEnabled,
   updateAutomationTask,
   updateFlowChoices,
   updateSettings,
   updateCommentStatus,
+  upsertOmikujiAsset,
   upsertMediaComment,
   upsertMediaPost
 } from "./db.js";
@@ -67,7 +72,14 @@ const {
   GRAPH_API_VERSION = "v26.0",
   DEEPSEEK_API_KEY,
   DEEPSEEK_BASE_URL = "https://api.deepseek.com",
-  DEEPSEEK_MODEL = "deepseek-v4-flash"
+  DEEPSEEK_MODEL = "deepseek-v4-flash",
+  GOOGLE_DRIVE_API_KEY,
+  OMIKUJI_FOLDER_SHOKICHI,
+  OMIKUJI_FOLDER_CHUKICHI,
+  OMIKUJI_FOLDER_KICHI,
+  OMIKUJI_FOLDER_DAIKICHI,
+  PUBLIC_BASE_URL,
+  RAILWAY_PUBLIC_DOMAIN
 } = process.env;
 
 const processedComments = new Set();
@@ -77,6 +89,7 @@ const workerId = `worker-${process.pid}-${Math.random().toString(36).slice(2)}`;
 let sendQueueBusy = false;
 const COMMENT_FIELDS = "id,text,username,timestamp,like_count,hidden,from";
 const COMMENT_FIELDS_DETAILED = "id,text,username,timestamp,like_count,hidden,from{id,username}";
+const OMIKUJI_RESULTS = ["小吉", "中吉", "吉", "大吉"];
 
 app.get("/", (_req, res) => {
   res.redirect("/admin");
@@ -125,6 +138,19 @@ app.get("/privacy", (_req, res) => {
 </html>`);
 });
 
+app.get("/omikuji-image/:assetId", async (req, res) => {
+  try {
+    const asset = await getOmikujiAsset(req.params.assetId);
+    if (!asset || asset.enabled === false) return res.status(404).send("not found");
+    const image = await fetchDriveImage(asset.driveFileId);
+    res.setHeader("Content-Type", image.contentType || asset.mimeType || "image/jpeg");
+    res.setHeader("Cache-Control", "public, max-age=3600");
+    res.send(Buffer.from(await image.response.arrayBuffer()));
+  } catch (error) {
+    res.status(500).send(errorMessage(error));
+  }
+});
+
 app.get("/admin", requireAdmin, async (_req, res) => {
   const html = await readFile(join(__dirname, "admin.html"), "utf8");
   res.type("html").send(html);
@@ -152,6 +178,12 @@ app.get("/api/status", requireAdmin, async (_req, res) => {
       DEEPSEEK_API_KEY: Boolean(DEEPSEEK_API_KEY),
       DEEPSEEK_BASE_URL,
       DEEPSEEK_MODEL,
+      GOOGLE_DRIVE_API_KEY: Boolean(GOOGLE_DRIVE_API_KEY),
+      OMIKUJI_FOLDER_SHOKICHI: Boolean(OMIKUJI_FOLDER_SHOKICHI),
+      OMIKUJI_FOLDER_CHUKICHI: Boolean(OMIKUJI_FOLDER_CHUKICHI),
+      OMIKUJI_FOLDER_KICHI: Boolean(OMIKUJI_FOLDER_KICHI),
+      OMIKUJI_FOLDER_DAIKICHI: Boolean(OMIKUJI_FOLDER_DAIKICHI),
+      PUBLIC_BASE_URL: publicBaseUrl() ?? "",
       GRAPH_BASE_URL,
       GRAPH_API_VERSION
     },
@@ -189,6 +221,14 @@ app.put("/api/settings", requireAdmin, async (req, res) => {
 
     if (Object.hasOwn(incoming, "automationEnabled")) {
       settings.automationEnabled = Boolean(incoming.automationEnabled);
+      settings.tarotDmEnabled = Boolean(incoming.automationEnabled);
+    }
+    if (Object.hasOwn(incoming, "tarotDmEnabled")) {
+      settings.tarotDmEnabled = Boolean(incoming.tarotDmEnabled);
+      settings.automationEnabled = Boolean(incoming.tarotDmEnabled);
+    }
+    if (Object.hasOwn(incoming, "omikujiEnabled")) {
+      settings.omikujiEnabled = Boolean(incoming.omikujiEnabled);
     }
     if (Object.hasOwn(incoming, "targetMode")) {
       settings.targetMode = incoming.targetMode === "marker_only" ? "marker_only" : "all_posts";
@@ -209,6 +249,12 @@ app.put("/api/settings", requireAdmin, async (req, res) => {
       settings.privateReplyTemplate = String(incoming.privateReplyTemplate ?? "").trim();
       if (!settings.privateReplyTemplate.includes("{reading}")) {
         return res.status(400).json({ ok: false, error: "DM本文フォーマットには {reading} を入れてください" });
+      }
+    }
+    if (Object.hasOwn(incoming, "omikujiTextTemplate")) {
+      settings.omikujiTextTemplate = String(incoming.omikujiTextTemplate ?? "").trim();
+      if (!settings.omikujiTextTemplate.includes("{result}")) {
+        return res.status(400).json({ ok: false, error: "おみくじ本文フォーマットには {result} を入れてください" });
       }
     }
     const numericSettings = {
@@ -407,6 +453,17 @@ app.post("/api/tasks/:taskId/retry", requireAdmin, async (req, res) => {
   }
 });
 
+app.post("/api/tasks/:taskId/send-omikuji", requireAdmin, async (req, res) => {
+  try {
+    const task = await getAutomationTask(req.params.taskId);
+    if (!task) return res.status(404).json({ ok: false, error: "task not found" });
+    const sent = await sendOmikujiForTask(task, { manual: true });
+    res.json({ ok: true, task: sent });
+  } catch (error) {
+    res.status(500).json({ ok: false, error: errorMessage(error) });
+  }
+});
+
 app.post("/api/ai/check", requireAdmin, async (_req, res) => {
   try {
     const content = await deepseekText([
@@ -471,6 +528,35 @@ app.get("/api/latest-media", requireAdmin, async (req, res) => {
 
 app.get("/api/media", requireAdmin, async (_req, res) => {
   res.json({ ok: true, media: (await getMediaPosts()) ?? [] });
+});
+
+app.get("/api/omikuji-assets", requireAdmin, async (_req, res) => {
+  const assets = (await getOmikujiAssets()) ?? [];
+  res.json({
+    ok: true,
+    assets,
+    counts: countOmikujiAssets(assets),
+    folders: omikujiFolderStatus()
+  });
+});
+
+app.post("/api/omikuji-assets/sync", requireAdmin, async (_req, res) => {
+  try {
+    const synced = await syncOmikujiFolders();
+    res.json({ ok: true, ...synced });
+  } catch (error) {
+    res.status(500).json({ ok: false, error: errorMessage(error) });
+  }
+});
+
+app.put("/api/omikuji-assets/:id", requireAdmin, async (req, res) => {
+  try {
+    const asset = await setOmikujiAssetEnabled(req.params.id, Boolean(req.body?.enabled));
+    if (!asset) return res.status(404).json({ ok: false, error: "asset not found" });
+    res.json({ ok: true, asset });
+  } catch (error) {
+    res.status(500).json({ ok: false, error: errorMessage(error) });
+  }
 });
 
 app.post("/api/sync-media", requireAdmin, async (req, res) => {
@@ -724,8 +810,10 @@ app.post("/api/dry-run-comment", requireAdmin, async (req, res) => {
       marker: flow?.marker ?? null,
       targetMode: settings.targetMode,
       targetAllowed,
-      automationEnabled: settings.automationEnabled,
-      wouldSend: Boolean(settings.automationEnabled && choice && targetAllowed && privateReply),
+      automationEnabled: Boolean(settings.tarotDmEnabled),
+      tarotDmEnabled: Boolean(settings.tarotDmEnabled),
+      omikujiEnabled: Boolean(settings.omikujiEnabled),
+      wouldSend: Boolean(settings.tarotDmEnabled && choice && targetAllowed && privateReply),
       needsReading: Boolean(choice && targetAllowed && !privateReply),
       publicReply,
       publicReplyTemplates: settings.publicReplyTemplates,
@@ -909,9 +997,9 @@ async function handleComment(comment) {
       { settings, flow }
     );
 
-    if (!settings.automationEnabled) {
+    if (!settings.tarotDmEnabled) {
       await updateCommentStatus(commentId, "ready_to_send");
-      await addTaskStep(task?.taskId, "send_gate", "skipped", "自動送信OFFのため、最後の送信だけ待機しています");
+      await addTaskStep(task?.taskId, "send_gate", "skipped", "鑑定DM OFFのため、最後の送信だけ待機しています");
       addEvent({ status: "ready_to_send", reason: "manual_send_required", commentId, mediaId, choice });
       return prepared.task;
     }
@@ -941,9 +1029,9 @@ async function runAutomationTask(task, options = {}) {
   const { settings, flow, task: preparedTask, publicReply, privateReply } = prepared;
   const taskId = preparedTask.taskId;
 
-  if (!options.forceSend && !settings.automationEnabled) {
+  if (!options.forceSend && !settings.tarotDmEnabled) {
     await updateCommentStatus(preparedTask.commentId, "ready_to_send");
-    await addTaskStep(taskId, "send_gate", "skipped", "自動送信OFFのため、最後の送信だけ待機しています");
+    await addTaskStep(taskId, "send_gate", "skipped", "鑑定DM OFFのため、最後の送信だけ待機しています");
     return getAutomationTask(taskId);
   }
 
@@ -1024,7 +1112,7 @@ async function processSendQueue() {
   sendQueueBusy = true;
   try {
     const settings = await getSettings();
-    if (!settings.automationEnabled) return;
+    if (!settings.tarotDmEnabled) return;
     if (settings.sendPausedUntil && new Date(settings.sendPausedUntil).getTime() > Date.now()) return;
 
     const hourly = await getOutboundSendCount(60);
@@ -1081,9 +1169,106 @@ async function processQueuedSendTask(task, settings) {
         apiUsage: result.headers
       });
       addEvent({ status: "sent", reason: "send_queue", commentId: task.commentId, mediaId: task.mediaId, choice: task.choice });
+
+      if (settings.omikujiEnabled) {
+        await sendOmikujiForTask(task, { manual: false }).catch((error) => {
+          console.error("omikuji send failed:", error);
+        });
+      } else {
+        await updateAutomationTask(task.taskId, { omikujiStatus: "skipped", omikujiError: null });
+      }
     }
   } catch (error) {
     await handleQueuedSendError(task, error, settings);
+  }
+}
+
+async function sendOmikujiForTask(task, options = {}) {
+  const taskId = task.taskId;
+  if (!task.userId) {
+    const message = "user_id未取得のため追加DM不可";
+    await updateAutomationTask(taskId, { omikujiStatus: "error", omikujiError: message });
+    await addTaskStep(taskId, "omikuji_required_user", "error", message);
+    throw new Error(message);
+  }
+
+  const settings = await getSettings();
+  const asset = await pickOmikujiAsset();
+  const imageUrl = `${publicBaseUrlOrThrow()}/omikuji-image/${asset.id}`;
+  const reading = task.mediaId ? await getMediaTarotReading(task.mediaId) : null;
+  const omikujiText = formatOmikujiText(settings.omikujiTextTemplate, {
+    result: asset.result,
+    username: task.username,
+    choice: task.choice,
+    card: reading?.cards?.[task.choice] ?? "",
+    theme: reading?.theme ?? ""
+  });
+
+  await updateAutomationTask(taskId, {
+    omikujiResult: asset.result,
+    omikujiAssetId: asset.id,
+    omikujiText,
+    omikujiImageUrl: imageUrl,
+    omikujiStatus: "sending",
+    omikujiError: null
+  });
+  await addTaskStep(taskId, "omikuji_selected", "success", "おみくじ画像を選びました", {
+    result: asset.result,
+    assetId: asset.id,
+    driveFileId: asset.driveFileId,
+    manual: Boolean(options.manual)
+  });
+
+  try {
+    const textResult = await sendTextMessageToUser(task.userId, omikujiText);
+    await addTaskStep(taskId, "omikuji_text", "success", "おみくじテキストDMを送信しました", {
+      omikujiText,
+      apiUsage: textResult.headers
+    });
+
+    const imageResult = await sendImageMessageToUser(task.userId, imageUrl);
+    await addTaskStep(taskId, "omikuji_image", "success", "おみくじ画像DMを送信しました", {
+      imageUrl,
+      apiUsage: imageResult.headers
+    });
+
+    const updated = await updateAutomationTask(taskId, {
+      omikujiStatus: "sent",
+      omikujiError: null,
+      lastApiHeaders: imageResult.headers
+    });
+    addEvent({
+      status: "omikuji_sent",
+      reason: options.manual ? "manual_omikuji" : "auto_omikuji",
+      commentId: task.commentId,
+      mediaId: task.mediaId,
+      choice: task.choice,
+      message: `${asset.result}のおみくじを送信しました`
+    });
+    return updated ?? getAutomationTask(taskId);
+  } catch (error) {
+    const message = errorMessage(error);
+    if (settings.pauseOnRateLimit && isRateLimitError(error)) {
+      const resumeAt = new Date(Date.now() + Number(settings.rateLimitPauseMinutes ?? 30) * 60 * 1000);
+      await updateSettings({ sendPausedUntil: resumeAt.toISOString() });
+    }
+    await updateAutomationTask(taskId, {
+      omikujiStatus: "error",
+      omikujiError: message,
+      lastApiHeaders: error?.metaHeaders ?? null
+    });
+    await addTaskStep(taskId, "omikuji_error", "error", message, {
+      apiUsage: error?.metaHeaders ?? null
+    });
+    addEvent({
+      status: "error",
+      reason: "omikuji_failed",
+      commentId: task.commentId,
+      mediaId: task.mediaId,
+      choice: task.choice,
+      message
+    });
+    throw error;
   }
 }
 
@@ -1582,6 +1767,96 @@ async function sendPrivateReply(commentId, message) {
   });
 }
 
+async function sendTextMessageToUser(userId, message) {
+  return graphRequestWithMeta(`/${IG_USER_ID}/messages`, {
+    method: "POST",
+    body: {
+      recipient: { id: userId },
+      message: { text: message }
+    }
+  });
+}
+
+async function sendImageMessageToUser(userId, imageUrl) {
+  return graphRequestWithMeta(`/${IG_USER_ID}/messages`, {
+    method: "POST",
+    body: {
+      recipient: { id: userId },
+      message: {
+        attachment: {
+          type: "image",
+          payload: {
+            url: imageUrl
+          }
+        }
+      }
+    }
+  });
+}
+
+async function syncOmikujiFolders() {
+  if (!GOOGLE_DRIVE_API_KEY) throw new Error("GOOGLE_DRIVE_API_KEY is not set");
+
+  const folders = omikujiFolders();
+  const synced = [];
+  const missing = folders.filter((folder) => !folder.folderId);
+  if (missing.length > 0) {
+    throw new Error(`おみくじフォルダー未設定: ${missing.map((item) => item.result).join(", ")}`);
+  }
+
+  for (const folder of folders) {
+    const files = await listDriveImages(folder.folderId);
+    for (const file of files) {
+      const asset = await upsertOmikujiAsset({
+        result: folder.result,
+        driveFileId: file.id,
+        name: file.name,
+        mimeType: file.mimeType,
+        enabled: true
+      });
+      synced.push(asset);
+    }
+    addEvent({
+      status: "sync",
+      reason: "omikuji_drive",
+      message: `${folder.result}: ${files.length}件のおみくじ画像を同期しました`
+    });
+  }
+
+  const assets = (await getOmikujiAssets()) ?? [];
+  return {
+    count: synced.length,
+    counts: countOmikujiAssets(assets),
+    assets
+  };
+}
+
+async function listDriveImages(folderId) {
+  const url = new URL("https://www.googleapis.com/drive/v3/files");
+  url.searchParams.set("key", GOOGLE_DRIVE_API_KEY);
+  url.searchParams.set("pageSize", "1000");
+  url.searchParams.set("fields", "files(id,name,mimeType,modifiedTime,size)");
+  url.searchParams.set("q", `'${folderId}' in parents and mimeType contains 'image/' and trashed = false`);
+
+  const json = await fetchJson(url);
+  return json.files ?? [];
+}
+
+async function fetchDriveImage(fileId) {
+  if (!GOOGLE_DRIVE_API_KEY) throw new Error("GOOGLE_DRIVE_API_KEY is not set");
+  const url = new URL(`https://www.googleapis.com/drive/v3/files/${fileId}`);
+  url.searchParams.set("key", GOOGLE_DRIVE_API_KEY);
+  url.searchParams.set("alt", "media");
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`Drive image fetch failed: ${response.status}`);
+  }
+  return {
+    response,
+    contentType: response.headers.get("content-type")
+  };
+}
+
 function requireAdmin(req, res, next) {
   if (ADMIN_AUTH_ENABLED !== "true") return next();
   if (!ADMIN_TOKEN) return next();
@@ -1682,6 +1957,75 @@ function formatPrivateReply(template, values = {}) {
     (text, [key, value]) => text.replaceAll(`{${key}}`, String(value)),
     source
   ).trim();
+}
+
+function formatOmikujiText(template, values = {}) {
+  const username = String(values.username ?? "").replace(/^@/, "").trim();
+  const displayName = username || "あなた";
+  const replacements = {
+    theme: values.theme ?? "",
+    result: values.result ?? "",
+    username: username || "あなた",
+    displayName,
+    honorific: username ? "さん" : "",
+    choice: values.choice ?? "",
+    card: values.card ?? ""
+  };
+  const source = String(template || "{result}");
+  return Object.entries(replacements).reduce(
+    (text, [key, value]) => text.replaceAll(`{${key}}`, String(value)),
+    source
+  ).trim();
+}
+
+async function pickOmikujiAsset() {
+  const result = OMIKUJI_RESULTS[Math.floor(Math.random() * OMIKUJI_RESULTS.length)];
+  const asset = await getRandomOmikujiAssetByResult(result);
+  if (!asset) throw new Error(`${result}のおみくじ画像がありません。Drive同期を確認してください`);
+  return asset;
+}
+
+function omikujiFolders() {
+  return [
+    { result: "小吉", folderId: parseDriveFolderId(OMIKUJI_FOLDER_SHOKICHI) },
+    { result: "中吉", folderId: parseDriveFolderId(OMIKUJI_FOLDER_CHUKICHI) },
+    { result: "吉", folderId: parseDriveFolderId(OMIKUJI_FOLDER_KICHI) },
+    { result: "大吉", folderId: parseDriveFolderId(OMIKUJI_FOLDER_DAIKICHI) }
+  ];
+}
+
+function omikujiFolderStatus() {
+  return Object.fromEntries(omikujiFolders().map((folder) => [folder.result, Boolean(folder.folderId)]));
+}
+
+function countOmikujiAssets(assets = []) {
+  const counts = Object.fromEntries(OMIKUJI_RESULTS.map((result) => [result, 0]));
+  for (const asset of assets) {
+    if (asset.enabled !== false && Object.hasOwn(counts, asset.result)) counts[asset.result] += 1;
+  }
+  return counts;
+}
+
+function parseDriveFolderId(value) {
+  const raw = String(value ?? "").trim();
+  if (!raw) return "";
+  const folderMatch = raw.match(/\/folders\/([a-zA-Z0-9_-]+)/);
+  if (folderMatch) return folderMatch[1];
+  const idParam = raw.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+  if (idParam) return idParam[1];
+  return raw;
+}
+
+function publicBaseUrl() {
+  if (PUBLIC_BASE_URL) return PUBLIC_BASE_URL.replace(/\/$/, "");
+  if (RAILWAY_PUBLIC_DOMAIN) return `https://${RAILWAY_PUBLIC_DOMAIN}`.replace(/\/$/, "");
+  return null;
+}
+
+function publicBaseUrlOrThrow() {
+  const baseUrl = publicBaseUrl();
+  if (!baseUrl) throw new Error("PUBLIC_BASE_URL または RAILWAY_PUBLIC_DOMAIN が必要です");
+  return baseUrl;
 }
 
 function neutralizeGenderedReading(text) {

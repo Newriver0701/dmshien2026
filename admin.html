@@ -515,11 +515,12 @@
           <a href="#workflows">Workflows</a>
           <a href="#tasks">Task History</a>
           <a href="#posts">Posts</a>
+          <a href="#omikuji">Omikuji</a>
           <a href="#ai">AI Settings</a>
           <a href="#token">Token</a>
         </nav>
         <p class="aside-note">
-          自動送信は初期OFFです。OFFでもWebhook受信、番号判定、鑑定文生成、返信文準備までは自動で進みます。
+          鑑定DMとおみくじは初期OFFです。OFFでもWebhook受信、番号判定、鑑定文生成、返信文準備までは自動で進みます。
         </p>
       </aside>
 
@@ -537,7 +538,8 @@
         </div>
 
         <div class="metrics">
-          <section class="metric"><span>自動送信</span><strong id="m-auto">OFF</strong></section>
+          <section class="metric"><span>鑑定DM</span><strong id="m-tarot-dm">OFF</strong></section>
+          <section class="metric"><span>おみくじ</span><strong id="m-omikuji">OFF</strong></section>
           <section class="metric"><span>今日のタスク</span><strong id="m-tasks">0</strong></section>
           <section class="metric"><span>送信待ち</span><strong id="m-ready">0</strong></section>
           <section class="metric"><span>待機中</span><strong id="m-queued">0</strong></section>
@@ -555,7 +557,8 @@
               <p class="hint">WebhookからDM送信までの実行ステップです。</p>
             </div>
             <div class="row-actions">
-              <button id="toggle-auto" class="primary">自動送信をONにする</button>
+              <button id="toggle-auto" class="primary">鑑定DMをONにする</button>
+              <button id="toggle-omikuji">おみくじをONにする</button>
               <button id="toggle-ai-choice">番号AI</button>
               <button id="toggle-ai-reading">鑑定AI</button>
               <button id="save-settings">設定を保存</button>
@@ -566,7 +569,8 @@
             <div class="step"><div class="step-no">2</div><div><h3>Choice Detection</h3><p class="hint">ルール判定。判定不能ならDeepSeek JSON判定</p></div><span class="badge" id="b-ai-choice">AI</span></div>
             <div class="step"><div class="step-no">3</div><div><h3>Generate Tarot Reading</h3><p class="hint">初コメント時に投稿キャプションから1/2/3の鑑定文を生成</p></div><span class="badge" id="b-ai-reading">AI</span></div>
             <div class="step"><div class="step-no">4</div><div><h3>Send Timing</h3><p class="hint">公開返信は120〜600秒後、DMはさらに180〜600秒後。複数コメントは並列で処理</p></div><span class="badge">delay</span></div>
-            <div class="step"><div class="step-no">5</div><div><h3>Private Reply DM</h3><p class="hint">選ばれた番号の鑑定文をcomment_id宛に送信</p></div><span class="badge warn" id="b-auto">paused</span></div>
+            <div class="step"><div class="step-no">5</div><div><h3>Tarot DM</h3><p class="hint">選ばれた番号の鑑定文をcomment_id宛に送信</p></div><span class="badge warn" id="b-auto">paused</span></div>
+            <div class="step"><div class="step-no">6</div><div><h3>Omikuji DM</h3><p class="hint">Drive画像からランダムに選び、テキストと画像を追加送信</p></div><span class="badge warn" id="b-omikuji">paused</span></div>
           </div>
           <div class="field">
             <label>送信タイミング</label>
@@ -734,6 +738,28 @@
           </section>
         </div>
 
+        <section class="panel" id="omikuji">
+          <div class="head">
+            <div>
+              <h2>Omikuji</h2>
+              <p class="hint">Google Driveの4フォルダーから画像を同期し、結果を均等ランダムで送ります。</p>
+            </div>
+            <button id="sync-omikuji" class="primary">Drive画像を同期</button>
+          </div>
+          <div class="metrics">
+            <section class="metric"><span>小吉</span><strong id="omikuji-shokichi">0</strong></section>
+            <section class="metric"><span>中吉</span><strong id="omikuji-chukichi">0</strong></section>
+            <section class="metric"><span>吉</span><strong id="omikuji-kichi">0</strong></section>
+            <section class="metric"><span>大吉</span><strong id="omikuji-daikichi">0</strong></section>
+          </div>
+          <div class="field">
+            <label for="omikuji-template">おみくじ本文フォーマット</label>
+            <textarea id="omikuji-template"></textarea>
+            <p class="hint">{displayName}=ユーザー名、未取得ならあなた / {honorific}=ユーザー名取得時だけさん / {result}=小吉など / {theme} / {choice} / {card}</p>
+          </div>
+          <div class="list" id="omikuji-list"></div>
+        </section>
+
         <section class="panel">
           <div class="head"><h2>Setup</h2></div>
           <div class="kv" id="env"></div>
@@ -752,6 +778,7 @@
       document.getElementById("refresh").addEventListener("click", refreshAll);
       document.getElementById("copy-webhook").addEventListener("click", copyWebhookUrl);
       document.getElementById("toggle-auto").addEventListener("click", toggleAutomation);
+      document.getElementById("toggle-omikuji").addEventListener("click", toggleOmikuji);
       document.getElementById("toggle-ai-choice").addEventListener("click", toggleAiChoice);
       document.getElementById("toggle-ai-reading").addEventListener("click", toggleAiReading);
       document.getElementById("save-settings").addEventListener("click", saveSettings);
@@ -768,19 +795,21 @@
       document.getElementById("ig-refresh-token").addEventListener("click", refreshInstagramToken);
       document.getElementById("ig-check-token").addEventListener("click", checkInstagramToken);
       document.getElementById("copy-ig-token").addEventListener("click", copyInstagramToken);
+      document.getElementById("sync-omikuji").addEventListener("click", syncOmikuji);
 
       refreshAll();
       setInterval(loadStatus, 10000);
 
       async function refreshAll() {
-        await Promise.all([loadStatus(), loadSettings(), loadTasks(), loadMedia()]);
+        await Promise.all([loadStatus(), loadSettings(), loadTasks(), loadMedia(), loadOmikuji()]);
       }
 
       async function loadStatus() {
         const data = await request("/api/status");
         settings = data.settings ?? settings;
         document.getElementById("updated").textContent = `最終更新: ${new Date().toLocaleString()}`;
-        document.getElementById("m-auto").textContent = settings.automationEnabled ? "ON" : "OFF";
+        document.getElementById("m-tarot-dm").textContent = settings.tarotDmEnabled ? "ON" : "OFF";
+        document.getElementById("m-omikuji").textContent = settings.omikujiEnabled ? "ON" : "OFF";
         document.getElementById("m-tasks").textContent = data.stats.tasksToday ?? 0;
         document.getElementById("m-ready").textContent = data.stats.readyTasks ?? 0;
         document.getElementById("m-queued").textContent = data.stats.queuedTasks ?? 0;
@@ -805,10 +834,14 @@
       }
 
       function renderSettingBadges() {
-        document.getElementById("toggle-auto").textContent = settings.automationEnabled ? "自動送信をOFFにする" : "自動送信をONにする";
-        document.getElementById("m-auto").textContent = settings.automationEnabled ? "ON" : "OFF";
-        document.getElementById("b-auto").textContent = settings.automationEnabled ? "active" : "paused";
-        document.getElementById("b-auto").className = `badge ${settings.automationEnabled ? "good" : "warn"}`;
+        document.getElementById("toggle-auto").textContent = settings.tarotDmEnabled ? "鑑定DMをOFFにする" : "鑑定DMをONにする";
+        document.getElementById("toggle-omikuji").textContent = settings.omikujiEnabled ? "おみくじをOFFにする" : "おみくじをONにする";
+        document.getElementById("m-tarot-dm").textContent = settings.tarotDmEnabled ? "ON" : "OFF";
+        document.getElementById("m-omikuji").textContent = settings.omikujiEnabled ? "ON" : "OFF";
+        document.getElementById("b-auto").textContent = settings.tarotDmEnabled ? "active" : "paused";
+        document.getElementById("b-auto").className = `badge ${settings.tarotDmEnabled ? "good" : "warn"}`;
+        document.getElementById("b-omikuji").textContent = settings.omikujiEnabled ? "active" : "paused";
+        document.getElementById("b-omikuji").className = `badge ${settings.omikujiEnabled ? "good" : "warn"}`;
         document.getElementById("b-ai-choice").textContent = settings.aiChoiceEnabled ? "AI on" : "AI off";
         document.getElementById("b-ai-reading").textContent = settings.aiReadingEnabled ? "AI on" : "AI off";
         document.getElementById("toggle-ai-choice").textContent = settings.aiChoiceEnabled ? "番号AIをOFF" : "番号AIをON";
@@ -816,6 +849,7 @@
         document.getElementById("m-target").textContent = targetModeLabel(settings.targetMode);
         document.getElementById("target-mode").value = settings.targetMode || "all_posts";
         document.getElementById("private-template").value = settings.privateReplyTemplate || "{reading}";
+        document.getElementById("omikuji-template").value = settings.omikujiTextTemplate || "";
         document.getElementById("public-min").value = settings.publicReplyMinDelaySec ?? 120;
         document.getElementById("public-max").value = settings.publicReplyMaxDelaySec ?? 600;
         document.getElementById("dm-min").value = settings.dmAfterPublicMinDelaySec ?? 180;
@@ -828,7 +862,12 @@
       }
 
       async function toggleAutomation() {
-        await put("/api/settings", { settings: { automationEnabled: !settings.automationEnabled } });
+        await put("/api/settings", { settings: { tarotDmEnabled: !settings.tarotDmEnabled } });
+        await refreshAll();
+      }
+
+      async function toggleOmikuji() {
+        await put("/api/settings", { settings: { omikujiEnabled: !settings.omikujiEnabled } });
         await refreshAll();
       }
 
@@ -851,6 +890,7 @@
           settings: {
             publicReplyTemplates,
             privateReplyTemplate: document.getElementById("private-template").value,
+            omikujiTextTemplate: document.getElementById("omikuji-template").value,
             targetMode,
             publicReplyMinDelaySec: document.getElementById("public-min").value,
             publicReplyMaxDelaySec: document.getElementById("public-max").value,
@@ -895,6 +935,51 @@
         button?.addEventListener("click", () => button.closest(".template-row")?.remove());
       }
 
+      async function loadOmikuji() {
+        const data = await request("/api/omikuji-assets");
+        const counts = data.counts ?? {};
+        document.getElementById("omikuji-shokichi").textContent = counts["小吉"] ?? 0;
+        document.getElementById("omikuji-chukichi").textContent = counts["中吉"] ?? 0;
+        document.getElementById("omikuji-kichi").textContent = counts["吉"] ?? 0;
+        document.getElementById("omikuji-daikichi").textContent = counts["大吉"] ?? 0;
+        document.getElementById("omikuji-list").innerHTML =
+          (data.assets ?? []).map(omikujiAssetCard).join("") || `<p class="muted">まだおみくじ画像が同期されていません。</p>`;
+        document.querySelectorAll("[data-toggle-omikuji-asset]").forEach((el) => {
+          el.addEventListener("click", () => toggleOmikujiAsset(el.dataset.toggleOmikujiAsset, el.dataset.enabled !== "true"));
+        });
+      }
+
+      async function syncOmikuji() {
+        const data = await post("/api/omikuji-assets/sync", {});
+        showAi(data);
+        await loadOmikuji();
+      }
+
+      async function toggleOmikujiAsset(assetId, enabled) {
+        const data = await put(`/api/omikuji-assets/${assetId}`, { enabled });
+        showAi(data);
+        await loadOmikuji();
+      }
+
+      function omikujiAssetCard(asset) {
+        return `
+          <div class="item">
+            <div class="line">
+              <div>
+                <strong>${escapeHtml(asset.result || "-")}</strong>
+                <span class="muted">${escapeHtml(asset.name || "")}</span>
+              </div>
+              <span class="badge ${asset.enabled ? "good" : "warn"}">${asset.enabled ? "有効" : "停止"}</span>
+            </div>
+            <p class="muted">Drive file: <code>${escapeHtml(asset.driveFileId || "")}</code></p>
+            <div class="actions">
+              <a href="${escapeHtml(`/omikuji-image/${asset.id}`)}" target="_blank" rel="noreferrer">画像確認</a>
+              <button data-toggle-omikuji-asset="${escapeHtml(asset.id)}" data-enabled="${asset.enabled ? "true" : "false"}">${asset.enabled ? "停止" : "有効化"}</button>
+            </div>
+          </div>
+        `;
+      }
+
       async function loadTasks() {
         const data = await request("/api/tasks?limit=100");
         document.getElementById("task-list").innerHTML =
@@ -932,6 +1017,7 @@
             ${row("受信日時", escapeHtml(formatDate(task.createdAt)))}
             ${row("投稿ID", `<code>${escapeHtml(task.mediaId || "")}</code>`)}
             ${row("コメントID", `<code>${escapeHtml(task.commentId || "")}</code>`)}
+            ${row("User ID", task.userId ? `<code>${escapeHtml(task.userId)}</code>` : `<span class="bad-text">user_id未取得のため追加DM不可</span>`)}
             ${row("番号", escapeHtml(task.choice || "unknown"))}
             ${row("判定方法", escapeHtml(task.choiceMethod || "-"))}
             ${row("公開返信", escapeHtml(task.publicReply || "なし"))}
@@ -941,6 +1027,11 @@
             ${row("DM送信予定", escapeHtml(formatDate(task.dmScheduledAt) || "なし"))}
             ${row("DM送信", escapeHtml(formatDate(task.dmSentAt) || "なし"))}
             ${row("試行回数", escapeHtml(String(task.attemptCount ?? 0)))}
+            ${row("おみくじ状態", escapeHtml(omikujiStatusLabel(task.omikujiStatus)))}
+            ${row("おみくじ結果", escapeHtml(task.omikujiResult || "なし"))}
+            ${row("おみくじ画像", task.omikujiImageUrl ? `<a href="${escapeHtml(task.omikujiImageUrl)}" target="_blank" rel="noreferrer">画像を開く</a>` : "なし")}
+            ${row("おみくじ本文", escapeHtml(task.omikujiText || "なし"))}
+            ${row("おみくじエラー", task.omikujiError ? `<span class="bad-text">${escapeHtml(task.omikujiError)}</span>` : "なし")}
             ${row("最後のAPI使用量", task.lastApiHeaders ? `<pre class="pre">${escapeHtml(JSON.stringify(task.lastApiHeaders, null, 2))}</pre>` : "なし")}
             ${row("エラー", task.errorMessage ? `<span class="bad-text">${escapeHtml(task.errorMessage)}</span>` : "なし")}
           </div>
@@ -952,11 +1043,17 @@
           </div>
           <div class="row-actions">
             <button class="primary" data-retry-task="${escapeHtml(task.taskId)}">${task.status === "sent" ? "このタスクを再送信" : "このタスクを送信"}</button>
+            <button data-send-omikuji="${escapeHtml(task.taskId)}">おみくじを手動送信</button>
           </div>
         `;
         document.querySelector("[data-retry-task]")?.addEventListener("click", async (event) => {
           await post(`/api/tasks/${event.currentTarget.dataset.retryTask}/retry`, {});
           await Promise.all([loadTasks(), selectTask(event.currentTarget.dataset.retryTask), loadStatus()]);
+        });
+        document.querySelector("[data-send-omikuji]")?.addEventListener("click", async (event) => {
+          const data = await post(`/api/tasks/${event.currentTarget.dataset.sendOmikuji}/send-omikuji`, {});
+          showAi(data);
+          await Promise.all([loadTasks(), selectTask(event.currentTarget.dataset.sendOmikuji), loadStatus(), loadOmikuji()]);
         });
       }
 
@@ -1254,7 +1351,7 @@
         return {
           received: "受信",
           choice_detected: "番号判定済み",
-          paused: "自動送信OFF",
+          paused: "鑑定DM OFF",
           ready_to_send: "送信待ち",
           scheduled_to_send: "送信待機中",
           sending_public: "公開返信送信中",
@@ -1273,6 +1370,15 @@
           retrying: "再実行中",
           unprocessed: "未処理"
         }[value] || value || "未処理";
+      }
+
+      function omikujiStatusLabel(value) {
+        return {
+          sending: "送信中",
+          sent: "送信済み",
+          skipped: "未送信",
+          error: "エラー"
+        }[value] || value || "未送信";
       }
 
       function targetModeLabel(value) {
@@ -1333,6 +1439,12 @@
           DEEPSEEK_API_KEY: "DeepSeek API Key",
           DEEPSEEK_BASE_URL: "DeepSeek API URL",
           DEEPSEEK_MODEL: "DeepSeek Model",
+          GOOGLE_DRIVE_API_KEY: "Google Drive API Key",
+          OMIKUJI_FOLDER_SHOKICHI: "おみくじ 小吉フォルダー",
+          OMIKUJI_FOLDER_CHUKICHI: "おみくじ 中吉フォルダー",
+          OMIKUJI_FOLDER_KICHI: "おみくじ 吉フォルダー",
+          OMIKUJI_FOLDER_DAIKICHI: "おみくじ 大吉フォルダー",
+          PUBLIC_BASE_URL: "公開URL",
           GRAPH_BASE_URL: "Instagram API URL",
           GRAPH_API_VERSION: "Instagram API Version"
         }[key] || key;

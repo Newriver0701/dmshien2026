@@ -5,6 +5,8 @@ const { Pool } = pg;
 let disabledReason = "";
 export const DEFAULT_SETTINGS = {
   automationEnabled: false,
+  tarotDmEnabled: false,
+  omikujiEnabled: false,
   targetMode: "all_posts",
   aiChoiceEnabled: true,
   aiReadingEnabled: true,
@@ -18,6 +20,11 @@ export const DEFAULT_SETTINGS = {
   pauseOnRateLimit: true,
   rateLimitPauseMinutes: 30,
   sendPausedUntil: null,
+  omikujiTextTemplate: `コメントありがとうございます🔮
+本日の投稿に反応してくださった方限定で おみくじをお届けしています。
+{displayName}{honorific}に届いた結果は──{result}
+今のあなたに必要なメッセージです。
+画像を開いて受け取ってください。`,
   privateReplyTemplate: `{theme}
 
 {reading}
@@ -163,11 +170,24 @@ export async function initDatabase(flows = []) {
         updated_at timestamptz not null default now()
       );
 
+      create table if not exists omikuji_assets (
+        id bigserial primary key,
+        result text not null,
+        drive_file_id text not null unique,
+        name text,
+        mime_type text,
+        enabled boolean not null default true,
+        last_synced_at timestamptz not null default now(),
+        created_at timestamptz not null default now(),
+        updated_at timestamptz not null default now()
+      );
+
       create table if not exists automation_tasks (
         id bigserial primary key,
         comment_id text unique,
         media_id text,
         username text,
+        user_id text,
         comment_text text,
         sanitized_text text,
         choice text,
@@ -185,6 +205,12 @@ export async function initDatabase(flows = []) {
         locked_by text,
         last_api_headers jsonb,
         last_api_error text,
+        omikuji_result text,
+        omikuji_asset_id bigint references omikuji_assets(id) on delete set null,
+        omikuji_text text,
+        omikuji_image_url text,
+        omikuji_status text,
+        omikuji_error text,
         created_at timestamptz not null default now(),
         updated_at timestamptz not null default now()
       );
@@ -249,11 +275,18 @@ export async function initDatabase(flows = []) {
       alter table automation_tasks add column if not exists public_reply_sent_at timestamptz;
       alter table automation_tasks add column if not exists dm_scheduled_at timestamptz;
       alter table automation_tasks add column if not exists dm_sent_at timestamptz;
+      alter table automation_tasks add column if not exists user_id text;
       alter table automation_tasks add column if not exists attempt_count integer not null default 0;
       alter table automation_tasks add column if not exists locked_until timestamptz;
       alter table automation_tasks add column if not exists locked_by text;
       alter table automation_tasks add column if not exists last_api_headers jsonb;
       alter table automation_tasks add column if not exists last_api_error text;
+      alter table automation_tasks add column if not exists omikuji_result text;
+      alter table automation_tasks add column if not exists omikuji_asset_id bigint references omikuji_assets(id) on delete set null;
+      alter table automation_tasks add column if not exists omikuji_text text;
+      alter table automation_tasks add column if not exists omikuji_image_url text;
+      alter table automation_tasks add column if not exists omikuji_status text;
+      alter table automation_tasks add column if not exists omikuji_error text;
     `);
 
     await seedSettings();
@@ -884,6 +917,11 @@ export async function updateSettings(settings) {
 
 function normalizeSettings(settings) {
   const normalized = { ...settings };
+  normalized.tarotDmEnabled = Boolean(normalized.tarotDmEnabled || normalized.automationEnabled);
+  normalized.automationEnabled = Boolean(normalized.tarotDmEnabled);
+  if (!Object.hasOwn(normalized, "omikujiEnabled")) {
+    normalized.omikujiEnabled = false;
+  }
   if (
     typeof normalized.privateReplyTemplate === "string" &&
     normalized.privateReplyTemplate.includes("{displayName}には") &&
@@ -903,14 +941,15 @@ export async function createAutomationTask(task) {
   const result = await pool.query(
     `
       insert into automation_tasks (
-        comment_id, media_id, username, comment_text, sanitized_text,
+        comment_id, media_id, username, user_id, comment_text, sanitized_text,
         choice, choice_method, status, public_reply, private_reply, error_message,
         created_at, updated_at
       )
-      values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, now(), now())
+      values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, now(), now())
       on conflict (comment_id) do update set
         media_id = coalesce(excluded.media_id, automation_tasks.media_id),
         username = coalesce(nullif(excluded.username, ''), automation_tasks.username),
+        user_id = coalesce(nullif(excluded.user_id, ''), automation_tasks.user_id),
         comment_text = excluded.comment_text,
         sanitized_text = excluded.sanitized_text,
         choice = coalesce(excluded.choice, automation_tasks.choice),
@@ -927,6 +966,7 @@ export async function createAutomationTask(task) {
       task.commentId ?? null,
       task.mediaId ?? null,
       task.username ?? null,
+      task.userId ?? null,
       task.text ?? "",
       task.sanitizedText ?? "",
       task.choice ?? null,
@@ -949,6 +989,7 @@ export async function updateAutomationTask(taskId, patch) {
   const map = {
     mediaId: "media_id",
     username: "username",
+    userId: "user_id",
     text: "comment_text",
     sanitizedText: "sanitized_text",
     choice: "choice",
@@ -965,7 +1006,13 @@ export async function updateAutomationTask(taskId, patch) {
     lockedUntil: "locked_until",
     lockedBy: "locked_by",
     lastApiHeaders: "last_api_headers",
-    lastApiError: "last_api_error"
+    lastApiError: "last_api_error",
+    omikujiResult: "omikuji_result",
+    omikujiAssetId: "omikuji_asset_id",
+    omikujiText: "omikuji_text",
+    omikujiImageUrl: "omikuji_image_url",
+    omikujiStatus: "omikuji_status",
+    omikujiError: "omikuji_error"
   };
 
   for (const [key, column] of Object.entries(map)) {
@@ -1014,9 +1061,12 @@ export async function getAutomationTasks(limit = 100) {
         p.thumbnail_url as "thumbnailUrl",
         p.media_url as "mediaUrl",
         p.active as "mediaActive",
-        p.matched_marker as "matchedMarker"
+        p.matched_marker as "matchedMarker",
+        o.name as "omikujiAssetName",
+        o.drive_file_id as "omikujiDriveFileId"
       from automation_tasks t
       left join media_posts p on p.media_id = t.media_id
+      left join omikuji_assets o on o.id = t.omikuji_asset_id
       order by t.created_at desc
       limit $1
     `,
@@ -1037,9 +1087,12 @@ export async function getAutomationTask(taskId) {
         p.thumbnail_url as "thumbnailUrl",
         p.media_url as "mediaUrl",
         p.active as "mediaActive",
-        p.matched_marker as "matchedMarker"
+        p.matched_marker as "matchedMarker",
+        o.name as "omikujiAssetName",
+        o.drive_file_id as "omikujiDriveFileId"
       from automation_tasks t
       left join media_posts p on p.media_id = t.media_id
+      left join omikuji_assets o on o.id = t.omikuji_asset_id
       where t.id = $1
     `,
     [taskId]
@@ -1422,7 +1475,7 @@ export async function getOutboundSendCount(minutes) {
       select count(*)::int as count
       from automation_task_steps
       where
-        step_key in ('public_reply', 'private_reply')
+        step_key in ('public_reply', 'private_reply', 'omikuji_text', 'omikuji_image')
         and status = 'success'
         and created_at >= now() - ($1::text || ' minutes')::interval
     `,
@@ -1430,6 +1483,149 @@ export async function getOutboundSendCount(minutes) {
   );
 
   return result.rows[0]?.count ?? 0;
+}
+
+export async function upsertOmikujiAsset(asset) {
+  if (!pool) return null;
+
+  const result = await pool.query(
+    `
+      insert into omikuji_assets (
+        result, drive_file_id, name, mime_type, enabled, last_synced_at, updated_at
+      )
+      values ($1, $2, $3, $4, $5, now(), now())
+      on conflict (drive_file_id) do update set
+        result = excluded.result,
+        name = excluded.name,
+        mime_type = excluded.mime_type,
+        enabled = omikuji_assets.enabled,
+        last_synced_at = now(),
+        updated_at = now()
+      returning
+        id,
+        result,
+        drive_file_id as "driveFileId",
+        name,
+        mime_type as "mimeType",
+        enabled,
+        last_synced_at as "lastSyncedAt",
+        created_at as "createdAt",
+        updated_at as "updatedAt"
+    `,
+    [
+      asset.result,
+      asset.driveFileId,
+      asset.name ?? null,
+      asset.mimeType ?? null,
+      asset.enabled !== false
+    ]
+  );
+
+  return result.rows[0] ?? null;
+}
+
+export async function getOmikujiAssets() {
+  if (!pool) return null;
+
+  const result = await pool.query(`
+    select
+      id,
+      result,
+      drive_file_id as "driveFileId",
+      name,
+      mime_type as "mimeType",
+      enabled,
+      last_synced_at as "lastSyncedAt",
+      created_at as "createdAt",
+      updated_at as "updatedAt"
+    from omikuji_assets
+    order by
+      case result
+        when '大吉' then 1
+        when '吉' then 2
+        when '中吉' then 3
+        when '小吉' then 4
+        else 5
+      end,
+      name asc nulls last
+  `);
+
+  return result.rows;
+}
+
+export async function getOmikujiAsset(assetId) {
+  if (!pool) return null;
+
+  const result = await pool.query(
+    `
+      select
+        id,
+        result,
+        drive_file_id as "driveFileId",
+        name,
+        mime_type as "mimeType",
+        enabled,
+        last_synced_at as "lastSyncedAt",
+        created_at as "createdAt",
+        updated_at as "updatedAt"
+      from omikuji_assets
+      where id = $1
+    `,
+    [assetId]
+  );
+
+  return result.rows[0] ?? null;
+}
+
+export async function setOmikujiAssetEnabled(assetId, enabled) {
+  if (!pool) return null;
+
+  const result = await pool.query(
+    `
+      update omikuji_assets
+      set enabled = $2, updated_at = now()
+      where id = $1
+      returning
+        id,
+        result,
+        drive_file_id as "driveFileId",
+        name,
+        mime_type as "mimeType",
+        enabled,
+        last_synced_at as "lastSyncedAt",
+        created_at as "createdAt",
+        updated_at as "updatedAt"
+    `,
+    [assetId, enabled]
+  );
+
+  return result.rows[0] ?? null;
+}
+
+export async function getRandomOmikujiAssetByResult(result) {
+  if (!pool) return null;
+
+  const queryResult = await pool.query(
+    `
+      select
+        id,
+        result,
+        drive_file_id as "driveFileId",
+        name,
+        mime_type as "mimeType",
+        enabled,
+        last_synced_at as "lastSyncedAt",
+        created_at as "createdAt",
+        updated_at as "updatedAt"
+      from omikuji_assets
+      where result = $1 and enabled = true
+      order by random()
+      limit 1
+    `,
+    [result]
+  );
+
+  return queryResult.rows[0] ?? null;
 }
 
 export async function getStats() {
@@ -1498,6 +1694,7 @@ function taskSelectFields(alias = "") {
     ${prefix}comment_id as "commentId",
     ${prefix}media_id as "mediaId",
     ${prefix}username,
+    ${prefix}user_id as "userId",
     ${prefix}comment_text as text,
     ${prefix}sanitized_text as "sanitizedText",
     ${prefix}choice,
@@ -1515,6 +1712,12 @@ function taskSelectFields(alias = "") {
     ${prefix}locked_by as "lockedBy",
     ${prefix}last_api_headers as "lastApiHeaders",
     ${prefix}last_api_error as "lastApiError",
+    ${prefix}omikuji_result as "omikujiResult",
+    ${prefix}omikuji_asset_id as "omikujiAssetId",
+    ${prefix}omikuji_text as "omikujiText",
+    ${prefix}omikuji_image_url as "omikujiImageUrl",
+    ${prefix}omikuji_status as "omikujiStatus",
+    ${prefix}omikuji_error as "omikujiError",
     ${prefix}created_at as "createdAt",
     ${prefix}updated_at as "updatedAt"
   `;

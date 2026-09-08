@@ -2,13 +2,15 @@
 
 Instagramログイン方式だけで動かす、Pabbly代替のDM自動化ツールです。
 
-Webhookでコメントを受け取り、番号判定、タスク履歴作成、鑑定文生成、返信文準備、公開返信、Private Reply DM送信までRailway上で完結します。自動送信は初期OFFなので、まずは送信直前までの準備状態を確認できます。
+Webhookでコメントを受け取り、番号判定、タスク履歴作成、鑑定文生成、返信文準備、公開返信、Private Reply DM送信、おみくじ追加DMまでRailway上で完結します。送信は初期OFFなので、まずは送信直前までの準備状態を確認できます。
 
 ## できること
 
 - Webhookコメント1件ごとにタスク履歴を作成
-- 自動送信OFF時は、コメント保存、番号判定、鑑定文生成、返信文準備まで実行
-- 自動送信ON時は、公開返信とPrivate Reply DMまで自動送信
+- 鑑定DM OFF時は、コメント保存、番号判定、鑑定文生成、返信文準備まで実行
+- 鑑定DM ON時は、公開返信とPrivate Reply DMまで自動送信
+- おみくじON時は、鑑定DM後にGoogle Drive画像からランダムで追加DMを送信
+- おみくじOFF時でも、Task Detailから個別に手動送信
 - `1 / 2 / 3 / ① / ② / ③ / 1番 / No.2` などをルール判定
 - ルールで判定不能な時だけDeepSeekで番号判定
 - 投稿キャプションからテーマを抽出し、DeepSeekで①②③を個別に生成
@@ -34,6 +36,12 @@ GRAPH_API_VERSION=v26.0
 DEEPSEEK_API_KEY=DeepSeekのAPIキー
 DEEPSEEK_BASE_URL=https://api.deepseek.com
 DEEPSEEK_MODEL=deepseek-v4-flash
+GOOGLE_DRIVE_API_KEY=Google Drive APIキー
+OMIKUJI_FOLDER_SHOKICHI=小吉フォルダーIDまたはURL
+OMIKUJI_FOLDER_CHUKICHI=中吉フォルダーIDまたはURL
+OMIKUJI_FOLDER_KICHI=吉フォルダーIDまたはURL
+OMIKUJI_FOLDER_DAIKICHI=大吉フォルダーIDまたはURL
+PUBLIC_BASE_URL=https://YOUR-RAILWAY-DOMAIN.up.railway.app
 ADMIN_AUTH_ENABLED=false
 ADMIN_TOKEN=
 ```
@@ -59,13 +67,15 @@ ADMIN_TOKEN=
 https://YOUR-RAILWAY-DOMAIN.up.railway.app/admin
 ```
 
-左メニューは `Dashboard / Workflows / Task History / Posts / AI Settings / Token` です。
+左メニューは `Dashboard / Workflows / Task History / Posts / Omikuji / AI Settings / Token` です。
 
-最初は `Workflows` の自動送信がOFFです。OFFでも鑑定文生成と返信文準備までは進み、最後の公開返信/DM送信だけ止まります。
+最初は `Workflows` の `鑑定DM` と `おみくじ` がOFFです。OFFでも鑑定文生成と返信文準備までは進み、最後の送信だけ止まります。
 
-自動送信をONにしても、Webhook直後に即送信はしません。初期設定では公開返信を `120〜600秒後`、Private Reply DMをそのさらに `180〜600秒後` に送ります。同時に複数コメントが来た場合は、それぞれの待機時間が過ぎたものを並列で処理します。同時送信数は初期 `8`、1時間あたりの送信上限は初期 `150`、24時間あたりは初期 `1000` です。Meta APIの制限らしきエラーが出た場合は、初期 `30分` 停止してから再開します。
+鑑定DMをONにしても、Webhook直後に即送信はしません。初期設定では公開返信を `120〜600秒後`、Private Reply DMをそのさらに `180〜600秒後` に送ります。同時に複数コメントが来た場合は、それぞれの待機時間が過ぎたものを並列で処理します。同時送信数は初期 `8`、1時間あたりの送信上限は初期 `150`、24時間あたりは初期 `1000` です。Meta APIの制限らしきエラーが出た場合は、初期 `30分` 停止してから再開します。
 
 DM本文は `Workflows` の `DM本文フォーマット` で編集できます。投稿ごとに生成した鑑定文は `{reading}` に入り、前後に固定文を足せます。使える変数は `{theme}`、`{reading}`、`{displayName}`、`{honorific}`、`{username}`、`{choice}`、`{card}` です。`{displayName}` はユーザー名が取れた時は `username`、取れない時は `あなた` になります。`{honorific}` はユーザー名が取れた時だけ `さん` になります。
+
+おみくじは `Omikuji` の `Drive画像を同期` で、4つのDriveフォルダーから画像をDBに取り込みます。結果は `小吉 / 中吉 / 吉 / 大吉` を均等にランダム選択し、その結果フォルダー内から画像を1枚選びます。おみくじ本文には `{displayName}`、`{honorific}`、`{result}`、`{theme}`、`{choice}`、`{card}` が使えます。追加DMには `user_id` が必要です。
 
 送信対象は初期状態で `全投稿` です。マーカー付きの投稿だけに絞りたい時は、`Workflows` の `対象投稿` を `マーカー付きのみ` に変更してください。
 
@@ -89,7 +99,7 @@ https://YOUR-RAILWAY-DOMAIN.up.railway.app/privacy
 
 ## 対象投稿
 
-初期状態では、マーカー有無に関係なくWebhookで受けたコメントを番号判定します。自動送信ONなら、マーカーなし投稿でも鑑定文生成とDM送信に進みます。
+初期状態では、マーカー有無に関係なくWebhookで受けたコメントを番号判定します。鑑定DM ONなら、マーカーなし投稿でも鑑定文生成とDM送信に進みます。
 
 マーカー付き投稿だけに絞りたい場合は、管理画面で `対象投稿` を `マーカー付きのみ` に変更し、対象リールのキャプションへ以下を入れます。
 
