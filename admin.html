@@ -808,6 +808,20 @@
             <textarea id="omikuji-template"></textarea>
             <p class="hint">{displayName}=ユーザー名、未取得ならあなた / {honorific}=ユーザー名取得時だけさん / {result}=小吉など / {theme} / {choice} / {card}</p>
           </div>
+          <div class="field">
+            <label for="pabbly-test-url">Pabbly Uploadテスト</label>
+            <input id="pabbly-test-url" placeholder="Drive Content URLを貼り付け" />
+            <div class="settings-grid">
+              <div>
+                <label for="pabbly-test-name">file_name</label>
+                <input id="pabbly-test-name" placeholder="aaa または Drive file id" />
+              </div>
+            </div>
+            <div class="row-actions">
+              <button id="pabbly-test-upload" class="primary">Pabbly Uploadをテスト</button>
+            </div>
+            <p class="hint">Instagram送信は行わず、Pabblyレスポンスの file_url だけ確認します。</p>
+          </div>
           <div class="list" id="omikuji-list"></div>
         </section>
 
@@ -848,6 +862,7 @@
       document.getElementById("ig-check-token").addEventListener("click", checkInstagramToken);
       document.getElementById("copy-ig-token").addEventListener("click", copyInstagramToken);
       document.getElementById("sync-omikuji").addEventListener("click", syncOmikuji);
+      document.getElementById("pabbly-test-upload").addEventListener("click", testPabblyUpload);
 
       refreshAll();
       setInterval(loadStatus, 10000);
@@ -1001,6 +1016,9 @@
         document.querySelectorAll("[data-toggle-omikuji-asset]").forEach((el) => {
           el.addEventListener("click", () => toggleOmikujiAsset(el.dataset.toggleOmikujiAsset, el.dataset.enabled !== "true"));
         });
+        document.querySelectorAll("[data-test-pabbly-asset]").forEach((el) => {
+          el.addEventListener("click", () => testPabblyAsset(el.dataset.testPabblyAsset));
+        });
       }
 
       async function syncOmikuji() {
@@ -1035,6 +1053,7 @@
             <div class="actions">
               <a href="${escapeHtml(imageUrl)}" target="_blank" rel="noreferrer">拡大</a>
               ${asset.driveThumbnailUrl ? `<a href="${escapeHtml(asset.driveThumbnailUrl)}" target="_blank" rel="noreferrer">Driveサムネ</a>` : ""}
+              <button data-test-pabbly-asset="${escapeHtml(asset.id)}">Pabblyテスト</button>
               <button data-toggle-omikuji-asset="${escapeHtml(asset.id)}" data-enabled="${asset.enabled ? "true" : "false"}">${asset.enabled ? "停止" : "有効化"}</button>
             </div>
           </div>
@@ -1172,6 +1191,17 @@
 
       function latestStepMetadata(steps, stepKey) {
         return [...steps].reverse().find((step) => step.stepKey === stepKey && step.metadata)?.metadata ?? null;
+      }
+
+      async function testPabblyUpload() {
+        const fileUrl = document.getElementById("pabbly-test-url").value.trim();
+        const fileName = document.getElementById("pabbly-test-name").value.trim() || "pabbly-test";
+        if (!fileUrl) return showAi({ ok: false, error: "Drive Content URLを入れてください" });
+        showAi(await post("/api/pabbly/test-upload", { fileUrl, fileName }));
+      }
+
+      async function testPabblyAsset(assetId) {
+        showAi(await post("/api/pabbly/test-upload", { assetId }));
       }
 
       async function loadMedia() {

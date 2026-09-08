@@ -561,6 +561,36 @@ app.post("/api/omikuji-assets/sync", requireAdmin, async (_req, res) => {
   }
 });
 
+app.post("/api/pabbly/test-upload", requireAdmin, async (req, res) => {
+  try {
+    const asset = req.body?.assetId ? await getOmikujiAsset(req.body.assetId) : null;
+    if (req.body?.assetId && !asset) return res.status(404).json({ ok: false, error: "asset not found" });
+
+    const fileUrl = String(req.body?.fileUrl || (asset ? omikujiSendImageUrl(asset) : "")).trim();
+    const fileName = String(req.body?.fileName || asset?.driveFileId || asset?.name || asset?.id || "pabbly-test").trim();
+    const result = await uploadOmikujiImageToPabbly(fileUrl, {
+      id: asset?.id ?? "test",
+      driveFileId: fileName,
+      name: fileName
+    });
+
+    res.json({
+      ok: true,
+      fileUrl: result.fileUrl,
+      requestBody: result.requestBody,
+      pabblyResponse: result.response
+    });
+  } catch (error) {
+    res.status(500).json({
+      ok: false,
+      error: errorMessage(error),
+      requestBody: error?.requestBody ?? null,
+      pabblyResponse: error?.pabblyResponse ?? null,
+      imageUrl: error?.imageUrl ?? null
+    });
+  }
+});
+
 app.put("/api/omikuji-assets/:id", requireAdmin, async (req, res) => {
   try {
     const asset = await setOmikujiAssetEnabled(req.params.id, Boolean(req.body?.enabled));
@@ -1849,6 +1879,7 @@ async function uploadOmikujiImageToPabbly(fileUrl, asset) {
     const message = json?.message || json?.error || text || `Pabbly Upload API error: ${response.status}`;
     const error = new Error(String(message));
     error.pabblyApiUrl = PABBLY_UPLOAD_API_URL;
+    error.requestBody = body;
     error.pabblyResponse = json ?? text;
     error.imageUrl = fileUrl;
     throw error;
@@ -1858,6 +1889,7 @@ async function uploadOmikujiImageToPabbly(fileUrl, asset) {
   if (!pabblyFileUrl) {
     const error = new Error("Pabbly Upload API responseに file_url がありません");
     error.pabblyApiUrl = PABBLY_UPLOAD_API_URL;
+    error.requestBody = body;
     error.pabblyResponse = json ?? text;
     error.imageUrl = fileUrl;
     throw error;
@@ -1865,6 +1897,7 @@ async function uploadOmikujiImageToPabbly(fileUrl, asset) {
 
   return {
     fileUrl: pabblyFileUrl,
+    requestBody: body,
     response: json ?? text
   };
 }
