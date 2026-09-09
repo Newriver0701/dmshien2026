@@ -1864,14 +1864,28 @@ async function uploadOmikujiImageToPabbly(fileUrl, asset) {
     u_id: PABBLY_U_ID
   };
 
-  const response = await fetch(PABBLY_UPLOAD_API_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${PABBLY_UPLOAD_API_TOKEN}`
-    },
-    body: JSON.stringify(body)
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30000);
+  let response;
+  try {
+    response = await fetch(PABBLY_UPLOAD_API_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${PABBLY_UPLOAD_API_TOKEN}`
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal
+    });
+  } catch (error) {
+    const wrapped = new Error(error?.name === "AbortError" ? "Pabbly Upload API timeout after 30 seconds" : errorMessage(error));
+    wrapped.pabblyApiUrl = PABBLY_UPLOAD_API_URL;
+    wrapped.requestBody = body;
+    wrapped.imageUrl = fileUrl;
+    throw wrapped;
+  } finally {
+    clearTimeout(timeout);
+  }
   const text = await response.text();
   const json = parseJsonText(text);
 

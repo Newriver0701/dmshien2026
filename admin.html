@@ -1199,12 +1199,20 @@
         const fileName = document.getElementById("pabbly-test-name").value.trim() || "pabbly-test";
         if (!fileUrl) return showPabbly({ ok: false, error: "Drive Content URLを入れてください" });
         showPabbly({ ok: null, message: "Pabbly Upload APIを実行中..." });
-        showPabbly(await post("/api/pabbly/test-upload", { fileUrl, fileName }));
+        try {
+          showPabbly(await post("/api/pabbly/test-upload", { fileUrl, fileName }));
+        } catch (error) {
+          showPabbly(error.details || { ok: false, error: error.message });
+        }
       }
 
       async function testPabblyAsset(assetId) {
         showPabbly({ ok: null, message: "同期済み画像でPabbly Upload APIを実行中...", assetId });
-        showPabbly(await post("/api/pabbly/test-upload", { assetId }));
+        try {
+          showPabbly(await post("/api/pabbly/test-upload", { assetId }));
+        } catch (error) {
+          showPabbly(error.details || { ok: false, error: error.message, assetId });
+        }
       }
 
       async function loadMedia() {
@@ -1453,7 +1461,11 @@
           body: JSON.stringify(body)
         });
         const data = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(data.error || response.statusText);
+        if (!response.ok) {
+          const error = new Error(data.error || response.statusText);
+          error.details = data;
+          throw error;
+        }
         return data;
       }
 
