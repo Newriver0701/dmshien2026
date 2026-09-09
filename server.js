@@ -1899,7 +1899,7 @@ async function uploadOmikujiImageToPabbly(fileUrl, asset) {
     throw error;
   }
 
-  const pabblyFileUrl = json?.file_url;
+  const pabblyFileUrl = extractPabblyFileUrl(json);
   if (!pabblyFileUrl) {
     const error = new Error("Pabbly Upload API responseに file_url がありません");
     error.pabblyApiUrl = PABBLY_UPLOAD_API_URL;
@@ -2020,6 +2020,20 @@ function parseJsonText(text) {
   } catch {
     return null;
   }
+}
+
+function extractPabblyFileUrl(json) {
+  const value = json?.file_url ?? json?.data?.file_url;
+  if (!value) return "";
+  return extractUrl(String(value));
+}
+
+function extractUrl(value) {
+  const text = String(value ?? "").trim();
+  const markdownMatch = text.match(/\((https?:\/\/[^)]+)\)/);
+  if (markdownMatch) return markdownMatch[1];
+  const plainMatch = text.match(/https?:\/\/\S+/);
+  return plainMatch ? plainMatch[0] : text;
 }
 
 function expiresAt(expiresIn) {
